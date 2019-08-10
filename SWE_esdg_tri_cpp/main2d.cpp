@@ -176,6 +176,20 @@ int main( int argc, char **argv ){
   app->props[ "defines/p_Nvgeo" ] = Nvgeo;
   app->props[ "defines/p_Nfgeo" ] = Nfgeo;
 
+  int KblkP = 8;
+  int KblkV = 8;
+  int KblkS = 8;
+  int KblkU = 8;
+  // number of elements in one group for project kernel
+  app->props[ "defines/p_KblkP" ] = KblkP;
+  // number of elements in one group for volume kernel
+  app->props[ "defines/p_KblkV" ] = KblkV;
+  // number of elements in one group for surface kernel
+  app->props[ "defines/p_KblkS" ] = KblkS;
+  // number of elements in one group for update kernel
+  app->props[ "defines/p_KblkU" ] = KblkU;
+
+
   // switch dfloat type (double/float) in types.h
   // switch between single precision and double precision
   if ( sizeof( dfloat ) == 4 ){
@@ -187,11 +201,13 @@ int main( int argc, char **argv ){
   // 1.0 is double precision floating point
   app->props[ "defines/p_Nfields" ] = Nfields;
   if (sizeof( dfloat ) == 4 ){
-    app->props[ "defines/p_tau" ] = ( float )  tau;
-    app->props[ "defines/p_g" ]   = ( float )  g;
+    app->props[ "defines/p_tau" ]    = ( float ) tau;
+    app->props[ "defines/p_g" ]      = ( float ) g;
+    app->props[ "defines/p_g_half" ] = ( float ) 0.5 * g;
   }else{
-    app->props[ "defines/p_tau" ] = ( double ) tau;
-    app->props[ "defines/p_g" ]   = ( double ) g;
+    app->props[ "defines/p_tau" ]    = ( double ) tau;
+    app->props[ "defines/p_g" ]      = ( double ) g;
+    app->props[ "defines/p_g_half" ] = ( double ) 0.5 * g;
   }
 
   // interpolate to quad pts and store  
@@ -200,6 +216,7 @@ int main( int argc, char **argv ){
 
     // build occa kernels  
   string path = "okl/SWE2DTri.okl";
+
 
   //testing
   occa::kernel volume, surface, update, project;
@@ -253,6 +270,39 @@ int main( int argc, char **argv ){
   MatrixXd VNP = VN * Pq;
   MatrixXd PN = mldivide( M, VNT ); 
 
+  // BTMq:  Bottom gemetry interpolated to quadrature points
+  MatrixXd BTMq = VN * btm;
+  // BTMx:  Stores interoplated bottom geometry derivatives in x direction
+  //        To get the BTMx for the e th element:
+  //        BTMx.middleCols( e, 1 )
+  MatrixXd gBTMx( NqT, K  );
+  // BTMy:  Stores interoplated bottom geometry derivatives in y direction
+  //        To get the BTMx for the e th element:
+  //        BTMy.middleCols( e, 1 )
+  MatrixXd gBTMy( NqT, K  );
+
+  // Building elementwise Mass matrices inverses and BTMx and BTMy
+  for( int e = 0; e < K; ++e ){
+      // get information for element e
+      // MatrixXd JJi = JJ.col( e ).asDiagonal();
+      // MatrixXd WqJJi = mesh->wq.asDiagonal() * JJi;
+      double rxJe = mesh->rxJ( 0 , e );
+      double ryJe = mesh->ryJ( 0 , e );
+      double sxJe = mesh->sxJ( 0 , e );
+      double syJe = mesh->syJ( 0 , e );
+
+      // build mass matrix, QNx and QNy for element e
+      MatrixXd QNx_e = rxJe * QNr + sxJe * QNs;
+      MatrixXd QNy_e = ryJe * QNr + syJe * QNs;
+      
+      gBTMx.middleCols( e, 1 )  = g * QNx_e * BTMq.col( e );
+      gBTMy.middleCols( e, 1 )  = g * QNy_e * BTMq.col( e );
+  }
+
+  QNr = .5 * ( QNr - QNr.transpose() );
+  QNs = .5 * ( QNs - QNs.transpose() );
+
+
   occa::memory o_Q, o_Qv, o_Qf; // solution   
   occa::memory o_vgeo, o_fgeo; // geofacs
 
@@ -271,6 +321,7 @@ int main( int argc, char **argv ){
   setOccaArray( app, MatrixXd::Zero( Np * Nfields, K ), o_res );  
 
   occa::memory o_VNP, o_QNr, o_QNs, o_PN, o_Lf, o_Vq; // operators
+  occa::memory o_gBTMx, o_gBTMy; // precomputed data
 
   // set solution arrays
   setOccaArray( app, Q, o_Q );
@@ -294,6 +345,8 @@ int main( int argc, char **argv ){
   setOccaArray( app, QNs, o_QNs );
   setOccaArray( app, PN, o_PN );
   setOccaArray( app, VNP, o_VNP );
+  setOccaArray( app, gBTMx, o_gBTMx );
+  setOccaArray( app, gBTMy, o_gBTMy );
 
   printf( "All matrices are set up\n" );
   
@@ -340,7 +393,7 @@ int main( int argc, char **argv ){
       // cout << "Qf block: row: " <<Qf.rows() << " . col: "<<Qf.cols() << ". " << endl << Qf << endl << endl;
 
       // compute the volume term with computing device
-      volume( K, o_vgeo, o_QNr, o_QNs, o_PN, o_Qv, o_Qf, o_rhs );
+      volume( K, o_vgeo, o_gBTMx, o_gBTMy, o_QNr, o_QNs, o_PN, o_Qv, o_Qf, o_rhs );
 
       MatrixXd rhs( Np * Nfields, K );
       // getOccaArray( app, o_rhs, rhs );
