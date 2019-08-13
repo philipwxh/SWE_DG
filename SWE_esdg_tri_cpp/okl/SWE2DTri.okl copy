@@ -258,16 +258,15 @@ void SWE2d_Vflux( const dfloat hL, const dfloat hR, const dfloat uL,
 
 
 // simplified volume kernel
-@kernel void volume( const int K,
+@kernel void volume1( const int K,
 		    		 const dfloat * vgeo  @restrict, // [rxJ; rxJf]
 		    		 const dfloat * gBTMx @restrict,
 		    		 const dfloat * gBTMy @restrict,
 		    		 const dfloat * QNr   @restrict,
 		    		 const dfloat * QNs   @restrict,
-		    		 const dfloat * PN    @restrict,
 		    		 const dfloat * Qv    @restrict,
 		    		 const dfloat * Qf    @restrict,
-		    		       dfloat * rhs   @restrict ){
+		    		       dfloat * rhsv  @restrict ){
 	/* inputs:
 	K:    total number of mesh elements
 	vgeo:  volume geometric terms [rxJ, rxJf]
@@ -287,52 +286,38 @@ void SWE2d_Vflux( const dfloat hL, const dfloat hR, const dfloat uL,
 
 		// setting up the shared memories for fast read and write
 		// s_Q: store Q values
-		@shared dfloat s_Q[ p_KblkV ][ p_Nfields + 1 ][ p_NqT ];
+		@shared dfloat s_Q[ p_KblkV ][ p_Nfields + 1 ][ p_Nq ];
 		// s_rhsv: store rhs values
-		@shared dfloat s_rhsv[ p_KblkV ][ p_Nfields ][ p_NqT ];
+		// @shared dfloat s_rhsv[ p_KblkV ][ p_Nfields ][ p_Nq ];
 		// store geometric terms  
 		@shared dfloat s_G[ p_KblkV ][ p_Nvgeo ]; // assume affine: constant per element  
-		@shared dfloat s_gBTx[ p_KblkV ][ p_NqT ];
-		@shared dfloat s_gBTy[ p_KblkV ][ p_NqT ];
-		@shared dfloat s_Q_hadamard_F[ p_KblkV ][ p_Nfields ][ p_Nq ][ p_NfqNfaces ];
 
 		// loop over all the elements in the group
 		for( int k_e = 0; k_e < p_KblkV; ++k_e; @inner( 1 ) ){
 			const int e = k_g * p_KblkV + k_e;
 			// assume these are conservative variables
 			// looping over all the quadrature pts
-			for( int i = 0; i < p_NqT; ++i; @inner( 0 ) ){
+			for( int i = 0; i < p_Nq; ++i; @inner( 0 ) ){
 				// p_NqT should be > Nvgeo = 5 for all N
 				if( i < p_Nvgeo ){
 					s_G[ k_e ][ i ] = vgeo[ i * p_Nq + e * p_Nq * p_Nvgeo ];
 				}
-				int geo_idx = i + p_NqT * e;
-				s_gBTx[ k_e ][ i ] = gBTMx[ geo_idx ];
-				s_gBTy[ k_e ][ i ] = gBTMy[ geo_idx ];
 			  
 				// draw from both vol and face values, read out to shared from Qv and Qf
 				// idv: index for the volume value
 				// idf: index for the face value
 				int idv = i + p_Nq * ( p_Nfields + 1 ) * e;
-				int idf = i - p_Nq + p_NfqNfaces * ( p_Nfields + 1 ) * e;      
 				for( int fld = 0; fld < p_Nfields + 1; ++fld ){
-					if( fld < p_Nfields ){
-						s_rhsv[ k_e ][ fld ][ i ] = ZERO;
-					}
-					if( i < p_Nq ){
-						s_Q[ k_e ][ fld ][ i ] = Qv[ idv ]; idv += p_Nq;
-					}else{
-					  	s_Q[ k_e ][ fld ][ i ] = Qf[ idf ]; idf += p_NfqNfaces;
-					}
+					s_Q[ k_e ][ fld ][ i ] = Qv[ idv ]; idv += p_Nq;
 				}
 			}//inner( 0 )
 		}//k_e
 		@barrier( "localMemFence" ); 
 
 		for( int k_e = 0; k_e < p_KblkV; ++k_e; @inner( 1 ) ){
+			const int e = k_g * p_KblkV + k_e;
 			// apply flux differencing: sum(Q.*F,2) -> s_rhsv (shared memory)
-			for( int i = 0; i < p_NqT; ++i; @inner( 0 ) ){
-			  	const int e = k_g * p_KblkV + k_e;
+			for( int i = 0; i < p_Nq; ++i; @inner( 0 ) ){
 				dfloat val[ p_Nfields + 1 ];
 				for( int fld = 0; fld < p_Nfields + 1; ++fld ){
 					val[ fld ] = ZERO; 
@@ -367,29 +352,156 @@ void SWE2d_Vflux( const dfloat hL, const dfloat hR, const dfloat uL,
 					const dfloat Qx   = Qrij * rxJ + Qsij * sxJ;
 					const dfloat Qy   = Qrij * ryJ + Qsij * syJ;
 
-					const dfloat Q_hadamard_F1 = Qx * FxV1 + Qy * FyV1;
-					const dfloat Q_hadamard_F2 = Qx * FxV2 + Qy * FyV2;
-					const dfloat Q_hadamard_F3 = Qx * FxV3 + Qy * FyV3;
-
-					val[ 0 ] += Q_hadamard_F1;
-					val[ 1 ] += Q_hadamard_F2;
-					val[ 2 ] += Q_hadamard_F3;
-					if( i >= p_Nq ){
-						s_Q_hadamard_F[ k_e ][ 0 ][ j ][ i - p_Nq ] = Q_hadamard_F1;
-						s_Q_hadamard_F[ k_e ][ 1 ][ j ][ i - p_Nq ] = Q_hadamard_F2;
-						s_Q_hadamard_F[ k_e ][ 2 ][ j ][ i - p_Nq ] = Q_hadamard_F3;
-					
-						// s_rhsv[ k_e ][ 0 ][ j ] -= Q_hadamard_F1;
-						// s_rhsv[ k_e ][ 1 ][ j ] -= Q_hadamard_F2;
-						// s_rhsv[ k_e ][ 2 ][ j ] -= Q_hadamard_F3;
-						// printf( "i = %d and j = %d\n", i, j );
-					}
+					val[0] = Qx * FxV1 + Qy * FyV1;
+					val[1] = Qx * FxV2 + Qy * FyV2;
+					val[2] = Qx * FxV3 + Qy * FyV3;
 				}
-				val[ 1 ] += h_i * s_gBTx[ k_e ][ i ] / 2;
-				val[ 2 ] += h_i * s_gBTy[ k_e ][ i ] / 2;
+
 				// write out to the shared memory
+				int id = i + e * p_Nfields * p_NqT;
 				for( int fld = 0; fld < p_Nfields; ++fld ){
-					s_rhsv[ k_e ][ fld ][ i ] = val[ fld ];
+					rhsv[ id ] = val[ fld ]; id += p_NqT;
+				}
+			}// inner0
+		}//k_e
+	}//k_g
+}
+
+// simplified volume kernel
+@kernel void volume2( const int K,
+		    		 const dfloat * vgeo  @restrict, // [rxJ; rxJf]
+		    		 const dfloat * gBTMx @restrict,
+		    		 const dfloat * gBTMy @restrict,
+		    		 const dfloat * QNr   @restrict,
+		    		 const dfloat * QNs   @restrict,
+		    		 const dfloat * Qv    @restrict,
+		    		 const dfloat * Qf    @restrict,
+		    		       dfloat * rhsv  @restrict ){
+	/* inputs:
+	K:    total number of mesh elements
+	vgeo:  volume geometric terms [rxJ, rxJf]
+	gBTMx: g * QNx * BTM, x derivative of bottom geometry
+	gBTMy: g * QNy * BTM, y derivative of bottom geometry
+	QNr:   Qr-.5 * Ef.transpose() * Br * Ef, .5 * Ef.transpose() * Br, -.5 * Br * Ef, .5 * Br;
+	QNs:   Qs-.5 * Ef.transpose() * Bs * Ef, .5 * Ef.transpose() * Bs, -.5 * Bs * Ef, .5 * Bs;
+    PN:    mldivide( M, VNT ); 
+    Qv:    variable to hold projected volume values
+	Qf:    variable to hold projected face values
+    rhs:   variable to hold updated right hand side information
+	*/ 	
+	// k_g denoted index of the group
+	// k_e denoted index of element inside a group
+    // looping over all the group
+	for( int k_g = 0; k_g < ( K + p_KblkV - 1 ) / p_KblkV; ++k_g; @outer( 0 ) ){
+
+		// setting up the shared memories for fast read and write
+		// s_Q: store Q values
+		@shared dfloat s_Q[ p_KblkV ][ p_Nfields + 1 ][ p_NfqNfaces ];
+		// s_rhsv: store rhs values
+		@shared dfloat s_rhsv[ p_KblkV ][ p_Nfields ][ p_NfqNfaces ];
+		// store geometric terms  
+		@shared dfloat s_G[ p_KblkV ][ p_Nvgeo ]; // assume affine: constant per element  
+		@shared dfloat s_gBTx[ p_KblkV ][ p_NfqNfaces ];
+		@shared dfloat s_gBTy[ p_KblkV ][ p_NfqNfaces ];
+		@shared dfloat s_Q_hadamard_F_row[ p_KblkV ][ p_Nfields ][ p_NfqNfaces ];
+		@shared dfloat s_Q_hadamard_F_col[ p_KblkV ][ p_Nfields ][ p_Nq ];
+
+		// loop over all the elements in the group
+		for( int k_e = 0; k_e < p_KblkV; ++k_e; @inner( 1 ) ){
+			const int e = k_g * p_KblkV + k_e;
+			// assume these are conservative variables
+			// looping over all the quadrature pts
+			for( int i = 0; i < p_N_vol2; ++i; @inner( 0 ) ){
+				int ii = i;
+				while( ii < p_NqT ){
+					// p_NqT should be > Nvgeo = 5 for all N
+					if( ii < p_Nvgeo ){
+						s_G[ k_e ][ ii ] = vgeo[ ii * p_Nq + e * p_Nq * p_Nvgeo ];
+					}
+					int geo_idx = ii + p_NqT * e + p_Nq;
+					s_gBTx[ k_e ][ ii ] = gBTMx[ geo_idx ];
+					s_gBTy[ k_e ][ ii ] = gBTMy[ geo_idx ];
+				  
+					// draw from both vol and face values, read out to shared from Qv and Qf
+					// idv: index for the volume value
+					// idf: index for the face value
+					int idv = ii + p_Nq * ( p_Nfields + 1 ) * e;
+					int idf = ii - p_Nq + p_NfqNfaces * ( p_Nfields + 1 ) * e;      
+					for( int fld = 0; fld < p_Nfields + 1; ++fld ){
+						if( ii < p_Nq ){
+							s_Q[ k_e ][ fld ][ ii ] = Qv[ idv ]; idv += p_Nq;
+						}else{
+						  	s_Q[ k_e ][ fld ][ ii ] = Qf[ idf ]; idf += p_NfqNfaces;
+						}
+					}
+					ii += p_N_vol2;
+				}
+			}//inner( 0 )
+		}//k_e
+		@barrier( "localMemFence" ); 
+
+		for( int k_e = 0; k_e < p_KblkV; ++k_e; @inner( 1 ) ){
+			// apply flux differencing: sum(Q.*F,2) -> s_rhsv (shared memory)
+			for( int i = 0; i < p_N_vol2; ++i; @inner( 0 ) ){
+			  	const int e = k_g * p_KblkV + k_e;
+			  	int ii = i;
+			  	int jj = 0;
+			  	while( ii < p_NfqNfaces )
+					dfloat val[ p_Nfields + 1 ];
+					for( int fld = 0; fld < p_Nfields + 1; ++fld ){
+						val[ fld ] = ZERO; 
+					}
+					// extract the info from the ith node
+					const dfloat h_i     = s_Q[ k_e ][ 0 ][ ii ];
+					const dfloat inv_h_i = ONE / h_i;
+					const dfloat u_i     = s_Q[ k_e ][ 1 ][ ii ] * inv_h_i;
+					const dfloat v_i     = s_Q[ k_e ][ 2 ][ ii ] * inv_h_i;
+					const dfloat b_i     = s_Q[ k_e ][ 3 ][ ii ];
+		#define rxJ s_G[ k_e ][ 0 ]
+		#define ryJ s_G[ k_e ][ 1 ]
+		#define sxJ s_G[ k_e ][ 2 ]
+		#define syJ s_G[ k_e ][ 3 ]
+					// apply Qr, Qs
+					while( jj < p_Nq )
+						// if( i == j ) continue;
+						// extract the info from the jth node
+						const dfloat h_j     = s_Q[ k_e ][ 0 ][ jj ];
+						const dfloat inv_h_j = ONE / h_j;
+						const dfloat u_j     = s_Q[ k_e ][ 1 ][ jj ] * inv_h_j;
+						const dfloat v_j     = s_Q[ k_e ][ 2 ][ jj ] * inv_h_j;
+						const dfloat b_j     = s_Q[ k_e ][ 3 ][ jj ];
+
+						// compute the volume flux
+						dfloat FxV1, FyV1, FxV2, FyV2, FxV3, FyV3;
+						SWE2d_Vflux( h_i, h_j, u_i, u_j, v_i, v_j,
+						     		 FxV1, FyV1, FxV2, FyV2, FxV3, FyV3 );
+
+						const dfloat Qrij = QNr[ i + j * p_NqT ];
+						const dfloat Qsij = QNs[ i + j * p_NqT ];
+						const dfloat Qx   = Qrij * rxJ + Qsij * sxJ;
+						const dfloat Qy   = Qrij * ryJ + Qsij * syJ;
+
+						const dfloat Q_hadamard_F1 = Qx * FxV1 + Qy * FyV1;
+						const dfloat Q_hadamard_F2 = Qx * FxV2 + Qy * FyV2;
+						const dfloat Q_hadamard_F3 = Qx * FxV3 + Qy * FyV3;
+
+						val[ 0 ] += Q_hadamard_F1;
+						val[ 1 ] += Q_hadamard_F2;
+						val[ 2 ] += Q_hadamard_F3;
+						if( i >= p_Nq ){
+							s_Q_hadamard_F[ k_e ][ 0 ][ j ][ i - p_Nq ] = Q_hadamard_F1;
+							s_Q_hadamard_F[ k_e ][ 1 ][ j ][ i - p_Nq ] = Q_hadamard_F2;
+							s_Q_hadamard_F[ k_e ][ 2 ][ j ][ i - p_Nq ] = Q_hadamard_F3;
+						
+							// s_rhsv[ k_e ][ 0 ][ j ] -= Q_hadamard_F1;
+							// s_rhsv[ k_e ][ 1 ][ j ] -= Q_hadamard_F2;
+							// s_rhsv[ k_e ][ 2 ][ j ] -= Q_hadamard_F3;
+							// printf( "i = %d and j = %d\n", i, j );
+						}
+					}
+					val[ 1 ] += h_i * s_gBTx[ k_e ][ ii ] / 2;
+					val[ 2 ] += h_i * s_gBTy[ k_e ][ ii ] / 2;
+					ii += p_N_vol2;
 				}
 			}// inner0
 		}//k_e
@@ -406,7 +518,42 @@ void SWE2d_Vflux( const dfloat hL, const dfloat hR, const dfloat uL,
 			}
 		}//k_e
 		@barrier( "localMemFence" );
+	}//k_g
+}
 
+@kernel void volume3( const int K, 
+			    	  const dfloat * PN   @restrict,
+	 				  const dfloat * rhsv @restrict,
+	 						dfloat * rhs  @restrict ){
+	/* inputs:
+	K:    total number of mesh elements
+	vgeo:  volume geometric terms [rxJ, rxJf]
+	gBTMx: g * QNx * BTM, x derivative of bottom geometry
+	gBTMy: g * QNy * BTM, y derivative of bottom geometry
+	QNr:   Qr-.5 * Ef.transpose() * Br * Ef, .5 * Ef.transpose() * Br, -.5 * Br * Ef, .5 * Br;
+	QNs:   Qs-.5 * Ef.transpose() * Bs * Ef, .5 * Ef.transpose() * Bs, -.5 * Bs * Ef, .5 * Bs;
+    PN:    mldivide( M, VNT ); 
+    Qv:    variable to hold projected volume values
+	Qf:    variable to hold projected face values
+    rhs:   variable to hold updated right hand side information
+	*/ 	
+	@shared dfloat s_rhsv[ p_KblkV ][ p_Nfields ][ p_NqT ];
+	// k_g denoted index of the group
+	// k_e denoted index of element inside a group
+    // looping over all the group
+	for( int k_g = 0; k_g < ( K + p_KblkV - 1 ) / p_KblkV; ++k_g; @outer( 0 ) ){
+
+		for( int k_e = 0; k_e < p_KblkV; ++k_e; @inner( 1 ) ){
+			const int e = k_g * p_KblkV + k_e;
+			// project s_rhsv using PN = Np x (Nq + Nfq*Nfaces)
+			for( int i = 0; i < p_NqT; ++i; @inner( 0 ) ){
+				int id = i + e * p_Nfields * p_Np;
+				for( int fld = 0; fld < p_Nfields; ++fld ){
+					s_rhsv[ k_e ][ fld ][ i ] = rhsv[ id ]; id += p_NqT;
+				}
+			}
+		}
+		@barrier( "localMemFence" );
 		for( int k_e = 0; k_e < p_KblkV; ++k_e; @inner( 1 ) ){
 			const int e = k_g * p_KblkV + k_e;
 			// project s_rhsv using PN = Np x (Nq + Nfq*Nfaces)

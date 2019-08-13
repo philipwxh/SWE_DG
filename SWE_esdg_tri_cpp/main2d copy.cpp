@@ -165,6 +165,7 @@ int main( int argc, char **argv ){
   // define macros for OCCA kernels
   app->props[ "defines/p_Np" ] = mesh->Np; // number of dims
   app->props[ "defines/p_Nq" ] = Nq;
+  app->props[ "defines/p_Nfq" ] = mesh->Nfq; // number of face quadrature points on each face
   app->props[ "defines/p_NfqNfaces" ] = NfqNfaces;  
   app->props[ "defines/p_NqT" ] = Nq + NfqNfaces; // total quadrature point 
   app->props[ "defines/p_T" ] = max( mesh->Nfq * mesh->Nfaces, mesh->Np );
@@ -177,10 +178,10 @@ int main( int argc, char **argv ){
   app->props[ "defines/p_Nvgeo" ] = Nvgeo;
   app->props[ "defines/p_Nfgeo" ] = Nfgeo;
 
-  int KblkP = 8;
-  int KblkV = 1;
-  int KblkS = 8;
-  int KblkU = 8;
+  int KblkP = 4;
+  int KblkV = 4;
+  int KblkS = 4;
+  int KblkU = 4;
   // number of elements in one group for project kernel
   app->props[ "defines/p_KblkP" ] = KblkP;
   // number of elements in one group for volume kernel
@@ -189,6 +190,9 @@ int main( int argc, char **argv ){
   app->props[ "defines/p_KblkS" ] = KblkS;
   // number of elements in one group for update kernel
   app->props[ "defines/p_KblkU" ] = KblkU;
+
+  app->props[ "defines/p_N_vol2" ] = 8;
+  
 
 
   // switch dfloat type (double/float) in types.h
@@ -220,10 +224,12 @@ int main( int argc, char **argv ){
 
 
   //testing
-  occa::kernel volume, surface, update, project;
-  volume = app->device.buildKernel( path.c_str(), "volume", app->props );
+  occa::kernel volume1, volume2, volume3, surface, update, project;
+  volume1 = app->device.buildKernel( path.c_str(), "volume1", app->props );
+  volume2 = app->device.buildKernel( path.c_str(), "volume2", app->props );
+  volume3 = app->device.buildKernel( path.c_str(), "volume3", app->props );
   surface = app->device.buildKernel( path.c_str(), "surface", app->props );
-  update = app->device.buildKernel( path.c_str(), "update", app->props );
+  update  = app->device.buildKernel( path.c_str(), "update" , app->props );
   project = app->device.buildKernel( path.c_str(), "project", app->props );
   
   // ================= set node maps + boundary condition
@@ -317,9 +323,10 @@ int main( int argc, char **argv ){
   fgeo << mesh->nxJ, mesh->nyJ, mesh->sJ; // already at quad pts
   setOccaArray( app, fgeo, o_fgeo );
 
-  occa::memory o_rhs, o_res;  // timestep stuff
+  occa::memory o_rhs, o_res, o_rhsv;  // timestep stuff
   setOccaArray( app, MatrixXd::Zero( Np * Nfields, K ), o_rhs );
-  setOccaArray( app, MatrixXd::Zero( Np * Nfields, K ), o_res );  
+  setOccaArray( app, MatrixXd::Zero( Np * Nfields, K ), o_res ); 
+  setOccaArray( app, MatrixXd::Zero( NqT * Nfields, 1 ), o_res ); 
 
   occa::memory o_VNP, o_QNr, o_QNs, o_PN, o_Lf, o_Vq; // operators
   occa::memory o_gBTMx, o_gBTMy; // precomputed data
@@ -394,7 +401,9 @@ int main( int argc, char **argv ){
       // cout << "Qf block: row: " <<Qf.rows() << " . col: "<<Qf.cols() << ". " << endl << Qf << endl << endl;
 
       // compute the volume term with computing device
-      volume( K, o_vgeo, o_gBTMx, o_gBTMy, o_QNr, o_QNs, o_PN, o_Qv, o_Qf, o_rhs );
+      volume1( K, o_vgeo, o_gBTMx, o_gBTMy, o_QNr, o_QNs, o_PN, o_Qv, o_Qf, o_rhsv );
+      volume2( K, o_vgeo, o_gBTMx, o_gBTMy, o_QNr, o_QNs, o_PN, o_Qv, o_Qf, o_rhsv );
+      volume3( K, o_vgeo, o_gBTMx, o_gBTMy, o_QNr, o_QNs, o_PN, o_Qv, o_Qf, o_rhsv );
       // MatrixXd rhs( Np * Nfields, K );
       // getOccaArray( app, o_rhs, rhs );
       // cout << "rhs block: row: " <<rhs.rows() << " . col: "<<rhs.cols() << ". " << endl << rhs << endl << endl;

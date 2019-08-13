@@ -294,8 +294,6 @@ void SWE2d_Vflux( const dfloat hL, const dfloat hR, const dfloat uL,
 		@shared dfloat s_G[ p_KblkV ][ p_Nvgeo ]; // assume affine: constant per element  
 		@shared dfloat s_gBTx[ p_KblkV ][ p_NqT ];
 		@shared dfloat s_gBTy[ p_KblkV ][ p_NqT ];
-		@shared dfloat s_Q_hadamard_F[ p_KblkV ][ p_Nfields ][ p_Nq ][ p_NfqNfaces ];
-
 		// loop over all the elements in the group
 		for( int k_e = 0; k_e < p_KblkV; ++k_e; @inner( 1 ) ){
 			const int e = k_g * p_KblkV + k_e;
@@ -316,9 +314,6 @@ void SWE2d_Vflux( const dfloat hL, const dfloat hR, const dfloat uL,
 				int idv = i + p_Nq * ( p_Nfields + 1 ) * e;
 				int idf = i - p_Nq + p_NfqNfaces * ( p_Nfields + 1 ) * e;      
 				for( int fld = 0; fld < p_Nfields + 1; ++fld ){
-					if( fld < p_Nfields ){
-						s_rhsv[ k_e ][ fld ][ i ] = ZERO;
-					}
 					if( i < p_Nq ){
 						s_Q[ k_e ][ fld ][ i ] = Qv[ idv ]; idv += p_Nq;
 					}else{
@@ -348,8 +343,7 @@ void SWE2d_Vflux( const dfloat hL, const dfloat hR, const dfloat uL,
 	#define sxJ s_G[ k_e ][ 2 ]
 	#define syJ s_G[ k_e ][ 3 ]
 				// apply Qr, Qs
-				for( int j = 0; j < p_Nq; ++j ){
-					// if( i == j ) continue;
+				for( int j = 0; j < p_NqT; ++j ){
 					// extract the info from the jth node
 					const dfloat h_j     = s_Q[ k_e ][ 0 ][ j ];
 					const dfloat inv_h_j = ONE / h_j;
@@ -366,24 +360,21 @@ void SWE2d_Vflux( const dfloat hL, const dfloat hR, const dfloat uL,
 					const dfloat Qsij = QNs[ i + j * p_NqT ];
 					const dfloat Qx   = Qrij * rxJ + Qsij * sxJ;
 					const dfloat Qy   = Qrij * ryJ + Qsij * syJ;
-
-					const dfloat Q_hadamard_F1 = Qx * FxV1 + Qy * FyV1;
-					const dfloat Q_hadamard_F2 = Qx * FxV2 + Qy * FyV2;
-					const dfloat Q_hadamard_F3 = Qx * FxV3 + Qy * FyV3;
-
-					val[ 0 ] += Q_hadamard_F1;
-					val[ 1 ] += Q_hadamard_F2;
-					val[ 2 ] += Q_hadamard_F3;
-					if( i >= p_Nq ){
-						s_Q_hadamard_F[ k_e ][ 0 ][ j ][ i - p_Nq ] = Q_hadamard_F1;
-						s_Q_hadamard_F[ k_e ][ 1 ][ j ][ i - p_Nq ] = Q_hadamard_F2;
-						s_Q_hadamard_F[ k_e ][ 2 ][ j ][ i - p_Nq ] = Q_hadamard_F3;
-					
-						// s_rhsv[ k_e ][ 0 ][ j ] -= Q_hadamard_F1;
-						// s_rhsv[ k_e ][ 1 ][ j ] -= Q_hadamard_F2;
-						// s_rhsv[ k_e ][ 2 ][ j ] -= Q_hadamard_F3;
-						// printf( "i = %d and j = %d\n", i, j );
-					}
+					val[ 0 ] += Qx * FxV1 + Qy * FyV1;
+					// need to be optimized!!
+					// need to be optimized!!
+					// need to be optimized!!
+					// need to be optimized!!
+					// need to be optimized!!
+					// need to be optimized!!
+					val[ 1 ] += Qx * FxV2 + Qy * FyV2;
+					val[ 2 ] += Qx * FxV3 + Qy * FyV3;
+					// need to be optimized!!
+					// need to be optimized!!
+					// need to be optimized!!
+					// need to be optimized!!
+					// need to be optimized!!
+					// need to be optimized!!
 				}
 				val[ 1 ] += h_i * s_gBTx[ k_e ][ i ] / 2;
 				val[ 2 ] += h_i * s_gBTy[ k_e ][ i ] / 2;
@@ -391,19 +382,9 @@ void SWE2d_Vflux( const dfloat hL, const dfloat hR, const dfloat uL,
 				for( int fld = 0; fld < p_Nfields; ++fld ){
 					s_rhsv[ k_e ][ fld ][ i ] = val[ fld ];
 				}
+
+			  
 			}// inner0
-		}//k_e
-		@barrier( "localMemFence" );
-		for( int k_e = 0; k_e < p_KblkV; ++k_e; @inner( 1 ) ){
-			for( int i = 0; i < p_NqT; ++i; @inner( 0 ) ){
-			  	if( i < p_Nq ){
-			  		for( int j = 0; j < p_NfqNfaces; ++j ){
-			  			for( int fld = 0; fld < p_Nfields; ++fld ){
-							s_rhsv[ k_e ][ fld ][ i ] -= s_Q_hadamard_F[ k_e ][ fld ][ i ][ j ]; 
-						}
-					}
-			  	}
-			}
 		}//k_e
 		@barrier( "localMemFence" );
 
