@@ -17,8 +17,7 @@
 int main( int argc, char **argv ){
   clock_t time_setup = clock();
   // N: default the degree of the polynomial
-  int N = 3
-  ;
+  int N = 3;
   // K1D: default number of elements in one direction.
   //      in 2D, there will be 16 by 16 quadrilateral or 16 by 16*2 triangles
   int K1D = 8;
@@ -193,10 +192,6 @@ int main( int argc, char **argv ){
   app->props[ "defines/p_KblkS" ] = KblkS;
   // number of elements in one group for update kernel
   app->props[ "defines/p_KblkU" ] = KblkU;
-
-  app->props[ "defines/p_N_vol2" ] = min( 8, mesh->Nfq );
-  
-
 
   // switch dfloat type (double/float) in types.h
   // switch between single precision and double precision
@@ -403,15 +398,16 @@ int main( int argc, char **argv ){
       // cout << "Qf block: row: " <<Qf.rows() << " . col: "<<Qf.cols() << ". " << endl << Qf << endl << endl;
 
       // compute the volume term with computing device
-      volume1( K, o_vgeo, o_gBTMx, o_gBTMy, o_QNr, o_QNs, o_Qv, o_rhsv );
+      volume1( K, o_vgeo, o_gBTMx, o_gBTMy, o_QNr, o_QNs, o_Qv, o_Qf, o_rhsv );
       // MatrixXd rhsv( NqT * Nfields, K );
       // getOccaArray( app, o_rhsv, rhsv );
       // cout << "rhsv block: row: " <<rhsv.rows() << " . col: "<<rhsv.cols() << ". " << endl << rhsv << endl << endl;
-      volume2( K, o_vgeo, o_gBTMx, o_gBTMy, o_QNr, o_QNs, o_Qv, o_Qf, o_rhsv );
+      // return 0;
+      volume2( K, o_vgeo, o_QNr, o_QNs, o_Qv, o_Qf, o_rhsv );
       // MatrixXd rhsv( NqT * Nfields, K );
       // getOccaArray( app, o_rhsv, rhsv );
       // cout << "rhsv block: row: " <<rhsv.rows() << " . col: "<<rhsv.cols() << ". " << endl << rhsv << endl << endl;
-
+      // return 0;
       volume3( K, o_PN, o_rhsv, o_rhs );
       // MatrixXd rhs( Np * Nfields, K );
       // getOccaArray( app, o_rhs, rhs );

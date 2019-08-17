@@ -17,7 +17,8 @@
 int main( int argc, char **argv ){
   clock_t time_setup = clock();
   // N: default the degree of the polynomial
-  int N = 3;
+  int N = 3
+  ;
   // K1D: default number of elements in one direction.
   //      in 2D, there will be 16 by 16 quadrilateral or 16 by 16*2 triangles
   int K1D = 8;
@@ -164,7 +165,11 @@ int main( int argc, char **argv ){
   // define macros for OCCA kernels
   app->props[ "defines/p_Np" ] = mesh->Np; // number of dims
   app->props[ "defines/p_Nq" ] = Nq;
+  cout << "Nq = " << Nq << endl;
+  app->props[ "defines/p_Nfq" ] = mesh->Nfq; // number of face quadrature points on each face
   app->props[ "defines/p_NfqNfaces" ] = NfqNfaces;  
+  cout << "NfqNfaces = " << NfqNfaces << endl;
+
   app->props[ "defines/p_NqT" ] = Nq + NfqNfaces; // total quadrature point 
   app->props[ "defines/p_T" ] = max( mesh->Nfq * mesh->Nfaces, mesh->Np );
   
@@ -188,6 +193,9 @@ int main( int argc, char **argv ){
   app->props[ "defines/p_KblkS" ] = KblkS;
   // number of elements in one group for update kernel
   app->props[ "defines/p_KblkU" ] = KblkU;
+
+  app->props[ "defines/p_N_vol2" ] = min( 8, mesh->Nfq );
+  
 
 
   // switch dfloat type (double/float) in types.h
@@ -215,14 +223,16 @@ int main( int argc, char **argv ){
   //  setupOccaMesh2d(mesh,app); // store and pack mesh geofacs in OCCA mem
 
     // build occa kernels  
-  string path = "okl/SWE2DTri_group.okl";
+  string path = "okl/SWE2DTri_g_vol3.okl";
 
 
   //testing
-  occa::kernel volume, surface, update, project;
-  volume = app->device.buildKernel( path.c_str(), "volume", app->props );
+  occa::kernel volume1, volume2, volume3, surface, update, project;
+  volume1 = app->device.buildKernel( path.c_str(), "volume1", app->props );
+  volume2 = app->device.buildKernel( path.c_str(), "volume2", app->props );
+  volume3 = app->device.buildKernel( path.c_str(), "volume3", app->props );
   surface = app->device.buildKernel( path.c_str(), "surface", app->props );
-  update = app->device.buildKernel( path.c_str(), "update", app->props );
+  update  = app->device.buildKernel( path.c_str(), "update" , app->props );
   project = app->device.buildKernel( path.c_str(), "project", app->props );
   
   // ================= set node maps + boundary condition
@@ -302,7 +312,6 @@ int main( int argc, char **argv ){
   QNr = .5 * ( QNr - QNr.transpose() );
   QNs = .5 * ( QNs - QNs.transpose() );
 
-
   occa::memory o_Q, o_Qv, o_Qf; // solution   
   occa::memory o_vgeo, o_fgeo; // geofacs
 
@@ -316,9 +325,10 @@ int main( int argc, char **argv ){
   fgeo << mesh->nxJ, mesh->nyJ, mesh->sJ; // already at quad pts
   setOccaArray( app, fgeo, o_fgeo );
 
-  occa::memory o_rhs, o_res;  // timestep stuff
+  occa::memory o_rhs, o_res, o_rhsv;  // timestep stuff
   setOccaArray( app, MatrixXd::Zero( Np * Nfields, K ), o_rhs );
-  setOccaArray( app, MatrixXd::Zero( Np * Nfields, K ), o_res );  
+  setOccaArray( app, MatrixXd::Zero( Np * Nfields, K ), o_res ); 
+  setOccaArray( app, MatrixXd::Zero( NqT * Nfields, K ), o_rhsv ); 
 
   occa::memory o_VNP, o_QNr, o_QNs, o_PN, o_Lf, o_Vq; // operators
   occa::memory o_gBTMx, o_gBTMy; // precomputed data
@@ -393,11 +403,20 @@ int main( int argc, char **argv ){
       // cout << "Qf block: row: " <<Qf.rows() << " . col: "<<Qf.cols() << ". " << endl << Qf << endl << endl;
 
       // compute the volume term with computing device
-      volume( K, o_vgeo, o_gBTMx, o_gBTMy, o_QNr, o_QNs, o_PN, o_Qv, o_Qf, o_rhs );
+      volume1( K, o_vgeo, o_gBTMx, o_gBTMy, o_QNr, o_QNs, o_Qv, o_rhsv );
+      // MatrixXd rhsv( NqT * Nfields, K );
+      // getOccaArray( app, o_rhsv, rhsv );
+      // cout << "rhsv block: row: " <<rhsv.rows() << " . col: "<<rhsv.cols() << ". " << endl << rhsv << endl << endl;
+      volume2( K, o_vgeo, o_gBTMx, o_gBTMy, o_QNr, o_QNs, o_Qv, o_Qf, o_rhsv );
+      // MatrixXd rhsv( NqT * Nfields, K );
+      // getOccaArray( app, o_rhsv, rhsv );
+      // cout << "rhsv block: row: " <<rhsv.rows() << " . col: "<<rhsv.cols() << ". " << endl << rhsv << endl << endl;
+
+      volume3( K, o_PN, o_rhsv, o_rhs );
       // MatrixXd rhs( Np * Nfields, K );
       // getOccaArray( app, o_rhs, rhs );
       // cout << "rhs block: row: " <<rhs.rows() << " . col: "<<rhs.cols() << ". " << endl << rhs << endl << endl;
-
+      // return 0;
       // compute the suface term with computing device
       surface( K, o_fgeo, o_mapPq, o_bcFlag, o_Lf, o_Qf, o_rhs ); 
 
