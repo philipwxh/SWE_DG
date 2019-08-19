@@ -2,11 +2,11 @@
 #include <fstream>
 #include <string>
 #include <ctime>
-#include <chrono> 
 #include <unistd.h>
 
 #include "fem.h"
 #include "SWE_test_case.hpp"
+#include "SWE_fileio.hpp"
 // SWESOLUTION: name of the initial condition to be tested on
 #define SWESOLUTION VortexSWESolution2d
 #define tau 1.0
@@ -368,125 +368,29 @@ int main( int argc, char **argv ){
   // calculate the time for iterations
   time_iteration = clock() - time_iteration;
   cout << "Time for the loop is " << (float) time_iteration / CLOCKS_PER_SEC << " seconds" << endl;
-  clock_t time_error = clock();
   // get the solution from computing device back to CPU
   getOccaArray( app, o_Q, Q );
-  // update the 2D SWE term h, hu and hv onto CPU
-  h = Q.middleRows( 0, Np );
-  hu = Q.middleRows( Np, Np );
-  hv = Q.middleRows( 2 * Np, Np );
-  // cout << "h block: row: " <<h.rows() << " . col: "<<h.cols() << ". " << endl << h << endl << endl;
-
-
-  // should really use finer quadrature for error eval
-  // rhoex: the exact solution of 2D SWE at final time
-  MatrixXd hex;
-  MatrixXd xq   = Vq * x;
-  MatrixXd yq   = Vq * y;
-  MatrixXd btmq = Vq * btm;
   
-  // compute the exact solution
-  SWESOLUTION( xq, yq, FinalTime, g, hex, u, v , btmq );
-  
-  // obtain the quadrature weights for L2 evaluation
-  MatrixXd wJq = mesh->wq.asDiagonal() * ( Vq * mesh->J ); 
-  // compute the exact rho*u, rho*v and E
-  MatrixXd huex = hex.array() * u.array();
-  MatrixXd hvex = hex.array() * v.array();
-
-#if PRINT_ERR
-  // evaluate the L2 error
-  MatrixXd SWE_hError  = hex  - Vq * h;
-  MatrixXd SWE_huError = huex - Vq * hu;
-  MatrixXd SWE_hvError = hvex - Vq * hv;
-  string error_filename = "SWE_affine_h_" + to_string( N ) + "_" + to_string( K1D );
-  error_filename += "_" + to_string( CFL ) + "_" + to_string( FinalTime );
-  ofstream SWE_error_file( error_filename.c_str() );
-  for( int i = 0; i < SWE_hError.rows(); ++i ){
-    for( int j = 0; j < SWE_hError.cols(); ++j ){
-      SWE_error_file << SWE_hError( i, j ) << ",";
-    }
-    SWE_error_file << "\n";
-  }
-  SWE_error_file.close();
-
-  error_filename = "SWE_affine_hu_" + to_string( N ) + "_" + to_string( K1D );
-  error_filename += "_" + to_string( CFL ) + "_" + to_string( FinalTime );
-  SWE_error_file.open( error_filename.c_str() );
-  for( int i = 0; i < SWE_huError.rows(); ++i ){
-    for( int j = 0; j < SWE_huError.cols(); ++j ){
-      SWE_error_file << SWE_huError( i, j ) << ",";
-    }
-    SWE_error_file << "\n";
-  }
-  SWE_error_file.close();
-
-  error_filename = "SWE_affine_hv_" + to_string( N ) + "_" + to_string( K1D );
-  error_filename += "_" + to_string( CFL ) + "_" + to_string( FinalTime );
-  SWE_error_file.open( error_filename.c_str() );
-  for( int i = 0; i < SWE_hvError.rows(); ++i ){
-    for( int j = 0; j < SWE_hvError.cols(); ++j ){
-      SWE_error_file << SWE_hvError( i, j ) << ",";
-    }
-    SWE_error_file << "\n";
-  }
-  SWE_error_file.close();
-#endif
-
-  MatrixXd werr = wJq.array() * ( ( hex - Vq * h ).array().square() +
-			       ( huex - Vq * hu ).array().square() +
-			       ( hvex - Vq * hv ).array().square() );
-  double L2_err = sqrt( werr.sum() );
-
-  printf( "L2 error for rho = %.8g\n", L2_err );
-
-  // calculate the time for L2 error
+  // calculate the time for Linf and L2 error
+  clock_t time_error = clock();
+  double Linf_err, L2_err;
+  SWE_sol_err( N, K1D, g, FinalTime, mesh, Q, btm, &SWESOLUTION, Linf_err, L2_err );
   time_error = clock() - time_error;
   clock_t time_total = time_setup + time_iteration + time_error;
-  cout << "Time for the L2 error calculation is " << (float) time_error / CLOCKS_PER_SEC;
+  cout << "Time for the Linf and L2 error calculation is " << (float) time_error / CLOCKS_PER_SEC;
   cout << " seconds" << endl;
-  // calculate the time for total
-  cout << "total time is " << (float) time_total / CLOCKS_PER_SEC << " seconds" << endl;
-
+  // // calculate the time for total
+  // cout << "total time is " << (float) time_total / CLOCKS_PER_SEC << " seconds" << endl;
 #if CAL_RES
-  // write results to .csv file
-  string filename = "SWE_affine_result_Lx_";
-  filename += to_string( Lx ) + "_Ly" + to_string( Ly ) + ".csv";
-  ifstream file_test( filename.c_str() );
-  ofstream outfile;
-  // check if the file already exist
-  bool file_exist = file_test.good();
-  file_test.close();
-  // if the file already exist, open to append
-  if( file_exist ){
-    outfile.open( filename.c_str(), ios_base::app );
-  }else{
-    // if the file does not exist, create and open to write
-    outfile.open( filename.c_str() );
-  }
-  // check if the file opened correctly
-  if( outfile ){
-    // if the file does not exist, add a row of column description
-    if( !file_exist ){
-      outfile << "N,K1D,K,CFL,Final Time,Curve cofficient,dt,Nsteps,L2 Error,";
-      outfile << "Setup Time,Iteration Time,L2 Error time,Total Time,Finished Time\n";
-    }
-    // write out all the result and parameter
-    outfile << N << "," << K1D << ","  << K << "," << CFL << "," << FinalTime << ",";
-    outfile << curve << "," << dt << "," << Nsteps << "," << L2_err << ",";
-    outfile << (float) time_setup / CLOCKS_PER_SEC << ",";
-    outfile << (float) time_iteration / CLOCKS_PER_SEC << ",";
-    outfile << (float) time_error / CLOCKS_PER_SEC << ",";
-    outfile << (float) time_total / CLOCKS_PER_SEC << ",";
-    auto now_time = chrono::system_clock::now();
-    time_t cur_time = chrono::system_clock::to_time_t( now_time );
-    outfile << ctime( &cur_time );
-  }else{
-    cerr << "Cannot open file results.csv to write" << endl;
-  }
-  outfile.close();
+  SWE_fileio( Lx, Ly, N, K1D, K, Nsteps, 
+              curve, CFL, FinalTime, dt, L2_err, Linf_err, 
+              time_setup, time_iteration, time_error, time_total );
 #endif
 
+#if PRINT_ERR
+  SWE_error_output( mesh, Q, Vq, btm, g, FinalTime, CFL, N, K1D, &SWESOLUTION );
+#endif
+  
   return 0;
   
 }

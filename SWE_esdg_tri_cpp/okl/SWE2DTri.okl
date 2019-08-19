@@ -170,7 +170,7 @@ void SWE2d_Vflux( const dfloat hL, const dfloat hR, const dfloat uL,
 	// loop over all elements, iterator
 	// k_g denoted index of the group
 	// k_e denoted index of element inside a group
-	for( int k_g = 0; k_g < ( K + p_KblkP - 1 ) / p_KblkS; ++k_g; @outer( 0 ) ){
+	for( int k_g = 0; k_g < ( K + p_KblkP - 1 ) / p_KblkP; ++k_g; @outer( 0 ) ){
 		// declare shared memory for all nodes in one elements
 		// p_Nq: number of volume quadrature points in one element
 		@shared dfloat s_Q[ p_KblkP ][ p_Nfields + 1 ][ p_Nq ];
@@ -178,80 +178,84 @@ void SWE2d_Vflux( const dfloat hL, const dfloat hR, const dfloat uL,
 		const int k_g_e_start = k_g * p_KblkP;
 		for( int k_e = 0; k_e < p_KblkP; ++k_e; @inner( 1 ) ){
 			const int e = k_g_e_start + k_e;
-			// extract values of conservative vars at quad pts
-		    // p_NqT: total number of quadrature points in one element
-		    // loop over all quadrature points in one element
-			for( int i = 0; i < p_NqT; ++i; @inner( 0 ) ){
-				// we project the volume quadrature points first
-				if( i < p_Nq ){
-					// get the index of all fields for that quadrature points
-					int id = i + e * p_Nq * ( p_Nfields + 1 );
-					// extract the info from Qv for the fields
-					const dfloat u1 = Qv[ id ]; id += p_Nq;
-					const dfloat u2 = Qv[ id ]; id += p_Nq;
-					const dfloat u3 = Qv[ id ]; id += p_Nq;
-					const dfloat bt = Qv[ id ];
-					// compute entropy variables at qpts
-					dfloat v1, v2, v3;
-					VU( u1, u2, u3, bt, v1, v2, v3 );
+			if( e < K ){ 
+				// extract values of conservative vars at quad pts
+			    // p_NqT: total number of quadrature points in one element
+			    // loop over all quadrature points in one element
+				for( int i = 0; i < p_NqT; ++i; @inner( 0 ) ){
+					// we project the volume quadrature points first
+					if( i < p_Nq ){
+						// get the index of all fields for that quadrature points
+						int id = i + e * p_Nq * ( p_Nfields + 1 );
+						// extract the info from Qv for the fields
+						const dfloat u1 = Qv[ id ]; id += p_Nq;
+						const dfloat u2 = Qv[ id ]; id += p_Nq;
+						const dfloat u3 = Qv[ id ]; id += p_Nq;
+						const dfloat bt = Qv[ id ];
+						// compute entropy variables at qpts
+						dfloat v1, v2, v3;
+						VU( u1, u2, u3, bt, v1, v2, v3 );
 
-					s_Q[ k_e ][ 0 ][ i ] = v1;
-					s_Q[ k_e ][ 1 ][ i ] = v2;
-					s_Q[ k_e ][ 2 ][ i ] = v3;
-					s_Q[ k_e ][ 3 ][ i ] = bt;
+						s_Q[ k_e ][ 0 ][ i ] = v1;
+						s_Q[ k_e ][ 1 ][ i ] = v2;
+						s_Q[ k_e ][ 2 ][ i ] = v3;
+						s_Q[ k_e ][ 3 ][ i ] = bt;
 
-				}
-			}//inner( 0 )
+					}
+				}//inner( 0 )
+			}// e < K
 		}//k_e
 		@barrier( "localMemFence" );
 
 		// loop over all the element in the group
 		for( int k_e = 0; k_e < p_KblkP; ++k_e; @inner( 1 ) ){
 			const int e = k_g_e_start + k_e;
-			// compute projection of entropy variables
-			for ( int i = 0; i < p_NqT; ++i; @inner( 0 ) ){
-				dfloat val[ p_Nfields ];
-				for ( int fld = 0; fld < p_Nfields; ++fld ){
-					val[ fld ] = ZERO; 
-				}
-				// multiply each field of v(u) by (VN * Pq)
-				for ( int j = 0; j < p_Nq; ++j ){
-					// VNP: VN * Pq
-					const dfloat VNPij = VNP[ i + j * p_NqT ];
+			if( e < K ){
+				// compute projection of entropy variables
+				for ( int i = 0; i < p_NqT; ++i; @inner( 0 ) ){
+					dfloat val[ p_Nfields ];
 					for ( int fld = 0; fld < p_Nfields; ++fld ){
-						val[ fld ] += VNPij * s_Q[ k_e ][ fld ][ j ];
+						val[ fld ] = ZERO; 
 					}
-				}
+					// multiply each field of v(u) by (VN * Pq)
+					for ( int j = 0; j < p_Nq; ++j ){
+						// VNP: VN * Pq
+						const dfloat VNPij = VNP[ i + j * p_NqT ];
+						for ( int fld = 0; fld < p_Nfields; ++fld ){
+							val[ fld ] += VNPij * s_Q[ k_e ][ fld ][ j ];
+						}
+					}
 
-				// convert entropy to conservative variables and store
-				const dfloat v1 = val[ 0 ];
-				const dfloat v2 = val[ 1 ];
-				const dfloat v3 = val[ 2 ];
-				dfloat bt;
-				if( i < p_Nq ){
-					bt = s_Q[ k_e ][ 3 ][ i ];
-				}else{
-					int idb = i - p_Nq + e * ( p_Nfields + 1 ) * p_NfqNfaces;
-					idb += p_Nfields * p_NfqNfaces;
-					bt = Qf[ idb ];
-				}
-				dfloat u1,u2,u3;
-				UV( v1, v2, v3, bt, u1, u2, u3 );      
+					// convert entropy to conservative variables and store
+					const dfloat v1 = val[ 0 ];
+					const dfloat v2 = val[ 1 ];
+					const dfloat v3 = val[ 2 ];
+					dfloat bt;
+					if( i < p_Nq ){
+						bt = s_Q[ k_e ][ 3 ][ i ];
+					}else{
+						int idb = i - p_Nq + e * ( p_Nfields + 1 ) * p_NfqNfaces;
+						idb += p_Nfields * p_NfqNfaces;
+						bt = Qf[ idb ];
+					}
+					dfloat u1,u2,u3;
+					UV( v1, v2, v3, bt, u1, u2, u3 );      
 
-				// idv: index for volume nodes info
-				int idv = i + e * ( p_Nfields + 1 ) * p_Nq;
-				// idf: index for face nodes info
-				int idf = ( i - p_Nq ) + e * ( p_Nfields + 1 ) * p_NfqNfaces;      
-				if( i < p_Nq ){
-					Qv[ idv ] = u1; idv += p_Nq;
-					Qv[ idv ] = u2; idv += p_Nq;
-					Qv[ idv ] = u3; 
-				}else{
-					Qf[ idf ] = u1; idf += p_NfqNfaces;
-					Qf[ idf ] = u2; idf += p_NfqNfaces;
-					Qf[ idf ] = u3;
-				}      
-			}//inner( 0 )
+					// idv: index for volume nodes info
+					int idv = i + e * ( p_Nfields + 1 ) * p_Nq;
+					// idf: index for face nodes info
+					int idf = ( i - p_Nq ) + e * ( p_Nfields + 1 ) * p_NfqNfaces;      
+					if( i < p_Nq ){
+						Qv[ idv ] = u1; idv += p_Nq;
+						Qv[ idv ] = u2; idv += p_Nq;
+						Qv[ idv ] = u3; 
+					}else{
+						Qf[ idf ] = u1; idf += p_NfqNfaces;
+						Qf[ idf ] = u2; idf += p_NfqNfaces;
+						Qf[ idf ] = u3;
+					}      
+				}//inner( 0 )
+			}// e < K
 		}//k_e
 		@barrier( "localMemFence" );
 	}//k_g
@@ -295,84 +299,87 @@ void SWE2d_Vflux( const dfloat hL, const dfloat hR, const dfloat uL,
 		const int k_g_e_start = k_g * p_KblkV;
 		for( int k_e = 0; k_e < p_KblkV; ++k_e; @inner( 1 ) ){
 			const int e = k_g_e_start + k_e;
-			// assume these are conservative variables
-			// looping over all the quadrature pts
-			for( int i = 0; i < p_NqT; ++i; @inner( 0 ) ){
-				// p_NqT should be > Nvgeo = 5 for all N
-				if( i < p_Nvgeo ){
-					s_G[ k_e ][ i ] = vgeo[ i * p_Nq + e * p_Nq * p_Nvgeo ];
-				}
-				int geo_idx = i + p_NqT * e;
-				s_gBTx[ k_e ][ i ] = gBTMx[ geo_idx ];
-				s_gBTy[ k_e ][ i ] = gBTMy[ geo_idx ];
-			  
-				// draw from both vol and face values, read out to shared from Qv and Qf
-				// idv: index for the volume value
-				// idf: index for the face value
-				int idv = i + p_Nq * ( p_Nfields + 1 ) * e;
-				int idf = i - p_Nq + p_NfqNfaces * ( p_Nfields + 1 ) * e;      
-				for( int fld = 0; fld < p_Nfields; ++fld ){
-					if( i < p_Nq ){
-						s_Q[ k_e ][ fld ][ i ] = Qv[ idv ]; idv += p_Nq;
-					}else{
-					  	s_Q[ k_e ][ fld ][ i ] = Qf[ idf ]; idf += p_NfqNfaces;
+			if( e < K ){
+				// assume these are conservative variables
+				// looping over all the quadrature pts
+				for( int i = 0; i < p_NqT; ++i; @inner( 0 ) ){
+					// p_NqT should be > Nvgeo = 5 for all N
+					if( i < p_Nvgeo ){
+						s_G[ k_e ][ i ] = vgeo[ i * p_Nq + e * p_Nq * p_Nvgeo ];
 					}
-				}
-			}//inner( 0 )
+					int geo_idx = i + p_NqT * e;
+					s_gBTx[ k_e ][ i ] = gBTMx[ geo_idx ];
+					s_gBTy[ k_e ][ i ] = gBTMy[ geo_idx ];
+				  
+					// draw from both vol and face values, read out to shared from Qv and Qf
+					// idv: index for the volume value
+					// idf: index for the face value
+					int idv = i + p_Nq * ( p_Nfields + 1 ) * e;
+					int idf = i - p_Nq + p_NfqNfaces * ( p_Nfields + 1 ) * e;      
+					for( int fld = 0; fld < p_Nfields; ++fld ){
+						if( i < p_Nq ){
+							s_Q[ k_e ][ fld ][ i ] = Qv[ idv ]; idv += p_Nq;
+						}else{
+						  	s_Q[ k_e ][ fld ][ i ] = Qf[ idf ]; idf += p_NfqNfaces;
+						}
+					}// fld
+				}//inner( 0 )
+			}//e < k
 		}//k_e
 		@barrier( "localMemFence" ); 
 
 		for( int k_e = 0; k_e < p_KblkV; ++k_e; @inner( 1 ) ){
 			const int e = k_g_e_start + k_e;
-			// apply flux differencing: sum(Q.*F,2) -> s_rhsv (shared memory)
-			for( int i = 0; i < p_NqT; ++i; @inner( 0 ) ){
-				dfloat val[ p_Nfields ];
-				for( int fld = 0; fld < p_Nfields; ++fld ){
-					val[ fld ] = ZERO; 
-				}
-				// extract the info from the ith node
-				const dfloat h_i     = s_Q[ k_e ][ 0 ][ i ];
-				const dfloat inv_h_i = ONE / h_i;
-				const dfloat u_i     = s_Q[ k_e ][ 1 ][ i ] * inv_h_i;
-				const dfloat v_i     = s_Q[ k_e ][ 2 ][ i ] * inv_h_i;
-	#define rxJ s_G[ k_e ][ 0 ]
-	#define ryJ s_G[ k_e ][ 1 ]
-	#define sxJ s_G[ k_e ][ 2 ]
-	#define syJ s_G[ k_e ][ 3 ]
-				// apply Qr, Qs
-				for( int j = 0; j < p_Nq; ++j ){
-					// if( i == j ) continue;
-					// extract the info from the jth node
-					const dfloat h_j     = s_Q[ k_e ][ 0 ][ j ];
-					const dfloat inv_h_j = ONE / h_j;
-					const dfloat u_j     = s_Q[ k_e ][ 1 ][ j ] * inv_h_j;
-					const dfloat v_j     = s_Q[ k_e ][ 2 ][ j ] * inv_h_j;
+			if( e < K ){
+				// apply flux differencing: sum(Q.*F,2) -> s_rhsv (shared memory)
+				for( int i = 0; i < p_NqT; ++i; @inner( 0 ) ){
+					dfloat val[ p_Nfields ];
+					for( int fld = 0; fld < p_Nfields; ++fld ){
+						val[ fld ] = ZERO; 
+					}
+					// extract the info from the ith node
+					const dfloat h_i     = s_Q[ k_e ][ 0 ][ i ];
+					const dfloat inv_h_i = ONE / h_i;
+					const dfloat u_i     = s_Q[ k_e ][ 1 ][ i ] * inv_h_i;
+					const dfloat v_i     = s_Q[ k_e ][ 2 ][ i ] * inv_h_i;
+		#define rxJ s_G[ k_e ][ 0 ]
+		#define ryJ s_G[ k_e ][ 1 ]
+		#define sxJ s_G[ k_e ][ 2 ]
+		#define syJ s_G[ k_e ][ 3 ]
+					// apply Qr, Qs
+					for( int j = 0; j < p_Nq; ++j ){
+						// if( i == j ) continue;
+						// extract the info from the jth node
+						const dfloat h_j     = s_Q[ k_e ][ 0 ][ j ];
+						const dfloat inv_h_j = ONE / h_j;
+						const dfloat u_j     = s_Q[ k_e ][ 1 ][ j ] * inv_h_j;
+						const dfloat v_j     = s_Q[ k_e ][ 2 ][ j ] * inv_h_j;
 
-					// compute the volume flux
-					dfloat FxV1, FyV1, FxV2, FyV2, FxV3, FyV3;
-					SWE2d_Vflux( h_i, h_j, u_i, u_j, v_i, v_j,
-					     		 FxV1, FyV1, FxV2, FyV2, FxV3, FyV3 );
-					const int Q_idx = i + j * p_NqT;
-					const dfloat Qrij = QNr[ Q_idx ];
-					const dfloat Qsij = QNs[ Q_idx ];
-					const dfloat Qx   = Qrij * rxJ + Qsij * sxJ;
-					const dfloat Qy   = Qrij * ryJ + Qsij * syJ;
+						// compute the volume flux
+						dfloat FxV1, FyV1, FxV2, FyV2, FxV3, FyV3;
+						SWE2d_Vflux( h_i, h_j, u_i, u_j, v_i, v_j,
+						     		 FxV1, FyV1, FxV2, FyV2, FxV3, FyV3 );
+						const int Q_idx = i + j * p_NqT;
+						const dfloat Qrij = QNr[ Q_idx ];
+						const dfloat Qsij = QNs[ Q_idx ];
+						const dfloat Qx   = Qrij * rxJ + Qsij * sxJ;
+						const dfloat Qy   = Qrij * ryJ + Qsij * syJ;
 
-					val[0] += Qx * FxV1 + Qy * FyV1;
-					val[1] += Qx * FxV2 + Qy * FyV2;
-					val[2] += Qx * FxV3 + Qy * FyV3;
-				}
+						val[0] += Qx * FxV1 + Qy * FyV1;
+						val[1] += Qx * FxV2 + Qy * FyV2;
+						val[2] += Qx * FxV3 + Qy * FyV3;
+					}
 
-				val[ 1 ] += h_i * s_gBTx[ k_e ][ i ] / 2;
-				val[ 2 ] += h_i * s_gBTy[ k_e ][ i ] / 2;
+					val[ 1 ] += h_i * s_gBTx[ k_e ][ i ] / 2;
+					val[ 2 ] += h_i * s_gBTy[ k_e ][ i ] / 2;
 
-				// write out to the shared memory
-				int id = i + e * p_Nfields * p_NqT;
-				for( int fld = 0; fld < p_Nfields; ++fld ){
-					rhsv[ id ] = val[ fld ]; id += p_NqT;
-				}
-			}// inner0
-
+					// write out to the shared memory
+					int id = i + e * p_Nfields * p_NqT;
+					for( int fld = 0; fld < p_Nfields; ++fld ){
+						rhsv[ id ] = val[ fld ]; id += p_NqT;
+					}
+				}// inner0
+			}// e < k
 		}//k_e
 	}//k_g
 }
@@ -412,80 +419,84 @@ void SWE2d_Vflux( const dfloat hL, const dfloat hR, const dfloat uL,
 		const int k_g_e_start = k_g * p_KblkV;
 		for( int k_e = 0; k_e < p_KblkV; ++k_e; @inner( 1 ) ){
 			const int e = k_g_e_start + k_e;
-			// assume these are conservative variables
-			// looping over all the quadrature pts
-			for( int i = 0; i < p_Nq; ++i; @inner( 0 ) ){
-				int ii = i;
-				while( ii < p_NqT ){
-					// p_NqT should be > Nvgeo = 5 for all N
-					if( ii < p_Nvgeo ){
-						s_G[ k_e ][ ii ] = vgeo[ ii * p_Nq + e * p_Nq * p_Nvgeo ];
-					}
-					// draw from both vol and face values, read out to shared from Qv and Qf
-					// idv: index for the volume value
-					// idf: index for the face value
-					int idv = ii + p_Nq * ( p_Nfields + 1 ) * e;
-					int idf = ii - p_Nq + p_NfqNfaces * ( p_Nfields + 1 ) * e;
-					// int idrhs = ii + e * p_Nfields * p_NqT;   
-					for( int fld = 0; fld < p_Nfields; ++fld ){
-						if( ii < p_Nq ){
-							s_Q[ k_e ][ fld ][ ii ] = Qv[ idv ]; idv += p_Nq;
-						}else{
-						  	s_Q[ k_e ][ fld ][ ii ] = Qf[ idf ]; idf += p_NfqNfaces;
-						  	// rhsv[ idrhs ] = 0; idrhs += p_NqT;
+			if( e < K ){
+				// assume these are conservative variables
+				// looping over all the quadrature pts
+				for( int i = 0; i < p_Nq; ++i; @inner( 0 ) ){
+					int ii = i;
+					while( ii < p_NqT ){
+						// p_NqT should be > Nvgeo = 5 for all N
+						if( ii < p_Nvgeo ){
+							s_G[ k_e ][ ii ] = vgeo[ ii * p_Nq + e * p_Nq * p_Nvgeo ];
 						}
+						// draw from both vol and face values, read out to shared from Qv and Qf
+						// idv: index for the volume value
+						// idf: index for the face value
+						int idv = ii + p_Nq * ( p_Nfields + 1 ) * e;
+						int idf = ii - p_Nq + p_NfqNfaces * ( p_Nfields + 1 ) * e;
+						// int idrhs = ii + e * p_Nfields * p_NqT;   
+						for( int fld = 0; fld < p_Nfields; ++fld ){
+							if( ii < p_Nq ){
+								s_Q[ k_e ][ fld ][ ii ] = Qv[ idv ]; idv += p_Nq;
+							}else{
+							  	s_Q[ k_e ][ fld ][ ii ] = Qf[ idf ]; idf += p_NfqNfaces;
+							  	// rhsv[ idrhs ] = 0; idrhs += p_NqT;
+							}
 
+						}
+						ii += p_Nq;
 					}
-					ii += p_Nq;
-				}
-			}//inner( 0 )
+				}//inner( 0 )
+			}// e < k
 		}//k_e
 		@barrier( "localMemFence" ); 
 
 		for( int k_e = 0; k_e < p_KblkV; ++k_e; @inner( 1 ) ){
 			// apply flux differencing: sum(Q.*F,2) -> s_rhsv (shared memory)
-			for( int i = 0; i < p_NqT; ++i; @inner( 0 ) ){
-			  	const int e = k_g_e_start + k_e;
-				dfloat val[ p_Nfields ];
-				for( int fld = 0; fld < p_Nfields; ++fld ){
-					val[ fld ] = ZERO; 
-				}
-				// extract the info from the ith node
-				const dfloat h_i     = s_Q[ k_e ][ 0 ][ i ];
-				const dfloat inv_h_i = ONE / h_i;
-				const dfloat u_i     = s_Q[ k_e ][ 1 ][ i ] * inv_h_i;
-				const dfloat v_i     = s_Q[ k_e ][ 2 ][ i ] * inv_h_i;
-	#define rxJ s_G[ k_e ][ 0 ]
-	#define ryJ s_G[ k_e ][ 1 ]
-	#define sxJ s_G[ k_e ][ 2 ]
-	#define syJ s_G[ k_e ][ 3 ]
-				// apply Qr, Qs
-				for( int j = p_Nq; j < p_NqT; ++j ){
-					// extract the info from the jth node
-					const dfloat h_j     = s_Q[ k_e ][ 0 ][ j ];
-					const dfloat inv_h_j = ONE / h_j;
-					const dfloat u_j     = s_Q[ k_e ][ 1 ][ j ] * inv_h_j;
-					const dfloat v_j     = s_Q[ k_e ][ 2 ][ j ] * inv_h_j;
+			const int e = k_g_e_start + k_e;
+			if( e < K ){
+				for( int i = 0; i < p_NqT; ++i; @inner( 0 ) ){
+					dfloat val[ p_Nfields ];
+					for( int fld = 0; fld < p_Nfields; ++fld ){
+						val[ fld ] = ZERO; 
+					}
+					// extract the info from the ith node
+					const dfloat h_i     = s_Q[ k_e ][ 0 ][ i ];
+					const dfloat inv_h_i = ONE / h_i;
+					const dfloat u_i     = s_Q[ k_e ][ 1 ][ i ] * inv_h_i;
+					const dfloat v_i     = s_Q[ k_e ][ 2 ][ i ] * inv_h_i;
+		#define rxJ s_G[ k_e ][ 0 ]
+		#define ryJ s_G[ k_e ][ 1 ]
+		#define sxJ s_G[ k_e ][ 2 ]
+		#define syJ s_G[ k_e ][ 3 ]
+					// apply Qr, Qs
+					for( int j = p_Nq; j < p_NqT; ++j ){
+						// extract the info from the jth node
+						const dfloat h_j     = s_Q[ k_e ][ 0 ][ j ];
+						const dfloat inv_h_j = ONE / h_j;
+						const dfloat u_j     = s_Q[ k_e ][ 1 ][ j ] * inv_h_j;
+						const dfloat v_j     = s_Q[ k_e ][ 2 ][ j ] * inv_h_j;
 
-					// compute the volume flux
-					dfloat FxV1, FyV1, FxV2, FyV2, FxV3, FyV3;
-					SWE2d_Vflux( h_i, h_j, u_i, u_j, v_i, v_j,
-					     		 FxV1, FyV1, FxV2, FyV2, FxV3, FyV3 );
-					const int Q_idx = i + j * p_NqT;
-					const dfloat Qrij = QNr[ Q_idx ];
-					const dfloat Qsij = QNs[ Q_idx ];
-					const dfloat Qx   = Qrij * rxJ + Qsij * sxJ;
-					const dfloat Qy   = Qrij * ryJ + Qsij * syJ;
-					val[ 0 ] += Qx * FxV1 + Qy * FyV1;
-					val[ 1 ] += Qx * FxV2 + Qy * FyV2;
-					val[ 2 ] += Qx * FxV3 + Qy * FyV3;
-				}
-				// write out to the shared memory
-				int id = i + e * p_Nfields * p_NqT;
-				for( int fld = 0; fld < p_Nfields; ++fld ){
-					rhsv[ id ] += val[ fld ]; id += p_NqT;
-				}
-			}// inner0
+						// compute the volume flux
+						dfloat FxV1, FyV1, FxV2, FyV2, FxV3, FyV3;
+						SWE2d_Vflux( h_i, h_j, u_i, u_j, v_i, v_j,
+						     		 FxV1, FyV1, FxV2, FyV2, FxV3, FyV3 );
+						const int Q_idx = i + j * p_NqT;
+						const dfloat Qrij = QNr[ Q_idx ];
+						const dfloat Qsij = QNs[ Q_idx ];
+						const dfloat Qx   = Qrij * rxJ + Qsij * sxJ;
+						const dfloat Qy   = Qrij * ryJ + Qsij * syJ;
+						val[ 0 ] += Qx * FxV1 + Qy * FyV1;
+						val[ 1 ] += Qx * FxV2 + Qy * FyV2;
+						val[ 2 ] += Qx * FxV3 + Qy * FyV3;
+					}
+					// write out to the shared memory
+					int id = i + e * p_Nfields * p_NqT;
+					for( int fld = 0; fld < p_Nfields; ++fld ){
+						rhsv[ id ] += val[ fld ]; id += p_NqT;
+					}
+				}// inner0
+			}//e < K
 		}//k_e
 	}//k_g
 }
@@ -513,28 +524,30 @@ void SWE2d_Vflux( const dfloat hL, const dfloat hR, const dfloat uL,
 		const int k_g_e_start = k_g * p_KblkV;
 		for( int k_e = 0; k_e < p_KblkV; ++k_e; @inner( 1 ) ){
 			const int e = k_g_e_start + k_e;
-			// project s_rhsv using PN = Np x (Nq + Nfq*Nfaces)
-			for( int i = 0; i < p_Np; ++i; @inner( 0 ) ){
-				dfloat val[ p_Nfields ];
-				for( int fld = 0; fld < p_Nfields; ++fld ){
-					val[fld] = ZERO; 
-				}
-				// perform the matrix multiplication on s_rhsv	
-				for ( int j = 0; j < p_NqT; ++j ){
-					const dfloat PNij = PN[ i + j * p_Np ];
-					int id = j + e * p_Nfields * p_NqT;
+			if( e < K ){
+				// project s_rhsv using PN = Np x (Nq + Nfq*Nfaces)
+				for( int i = 0; i < p_Np; ++i; @inner( 0 ) ){
+					dfloat val[ p_Nfields ];
 					for( int fld = 0; fld < p_Nfields; ++fld ){
-					 	// val[ fld ] += PNij * s_rhsv[ k_e ][ fld ][ j ];
-					 	val[ fld ] += PNij * rhsv[ id ]; id += p_NqT;
-					}	  
-				}
+						val[fld] = ZERO; 
+					}
+					// perform the matrix multiplication on s_rhsv	
+					for ( int j = 0; j < p_NqT; ++j ){
+						const dfloat PNij = PN[ i + j * p_Np ];
+						int id = j + e * p_Nfields * p_NqT;
+						for( int fld = 0; fld < p_Nfields; ++fld ){
+						 	// val[ fld ] += PNij * s_rhsv[ k_e ][ fld ][ j ];
+						 	val[ fld ] += PNij * rhsv[ id ]; id += p_NqT;
+						}	  
+					}
 
-				// store output to rhs
-				int id = i + e * p_Nfields * p_Np;
-				for( int fld = 0; fld < p_Nfields; ++fld ){	
-					rhs[ id ] = 2 * val[ fld ]; id += p_Np;
-				}			  
-			}// inner0
+					// store output to rhs
+					int id = i + e * p_Nfields * p_Np;
+					for( int fld = 0; fld < p_Nfields; ++fld ){	
+						rhs[ id ] = 2 * val[ fld ]; id += p_Np;
+					}			  
+				}// inner0
+			}// e < K
 		}//k_E
 	}//k_g
 }
@@ -567,95 +580,98 @@ void SWE2d_Vflux( const dfloat hL, const dfloat hR, const dfloat uL,
 		const int k_g_e_start = k_g * p_KblkS;
         for( int k_e = 0; k_e < p_KblkS; ++k_e; @inner( 1 ) ){  
         	const int e = k_g_e_start + k_e;
-			// loop over all quadrature pts
-			for( int i = 0; i < p_T; ++i; @inner( 0 ) ){
+        	if( e < K ){
+				// loop over all quadrature pts
+				for( int i = 0; i < p_T; ++i; @inner( 0 ) ){
 
-				if( i < p_NfqNfaces ){
-					// idM: index of current node
-					// idP: index of neighbor node
-					int idM = i + e * ( p_Nfields + 1 ) * p_NfqNfaces;
-					int idP = mapPq[ i + e * p_NfqNfaces ];
-					// cout << "idM: " << idM << endl;
-					// cout << "idP: " << idP << endl << endl << endl;
-					// load +/- values
-					const dfloat hM  = Qf[ idM ];  idM += p_NfqNfaces;
-					const dfloat huM = Qf[ idM ];  idM += p_NfqNfaces;
-					const dfloat hvM = Qf[ idM ];
+					if( i < p_NfqNfaces ){
+						// idM: index of current node
+						// idP: index of neighbor node
+						int idM = i + e * ( p_Nfields + 1 ) * p_NfqNfaces;
+						int idP = mapPq[ i + e * p_NfqNfaces ];
+						// cout << "idM: " << idM << endl;
+						// cout << "idP: " << idP << endl << endl << endl;
+						// load +/- values
+						const dfloat hM  = Qf[ idM ];  idM += p_NfqNfaces;
+						const dfloat huM = Qf[ idM ];  idM += p_NfqNfaces;
+						const dfloat hvM = Qf[ idM ];
 
-					const dfloat hP  = Qf[ idP ];  idP += p_NfqNfaces;
-					const dfloat huP = Qf[ idP ];  idP += p_NfqNfaces;
-					const dfloat hvP = Qf[ idP ];
+						const dfloat hP  = Qf[ idP ];  idP += p_NfqNfaces;
+						const dfloat huP = Qf[ idP ];  idP += p_NfqNfaces;
+						const dfloat hvP = Qf[ idP ];
 
-					const dfloat inv_hM = ONE / hM;
-					const dfloat uM     = huM * inv_hM;
-					const dfloat vM     = hvM * inv_hM;
-					const dfloat inv_hP = ONE / hP; 	
-					const dfloat uP     = huP * inv_hP;	
-					const dfloat vP     = hvP * inv_hP;
-	 
-					// compute the surface flux
-					dfloat FxS1,FxS2,FxS3,FyS1,FyS2,FyS3;      
-					SWE2d_Sflux( hM, hP, uM, uP, vM, vP,
-						 		  FxS1, FyS1, FxS2, FyS2, FxS3, FyS3 );
+						const dfloat inv_hM = ONE / hM;
+						const dfloat uM     = huM * inv_hM;
+						const dfloat vM     = hvM * inv_hM;
+						const dfloat inv_hP = ONE / hP; 	
+						const dfloat uP     = huP * inv_hP;	
+						const dfloat vP     = hvP * inv_hP;
+		 
+						// compute the surface flux
+						dfloat FxS1,FxS2,FxS3,FyS1,FyS2,FyS3;      
+						SWE2d_Sflux( hM, hP, uM, uP, vM, vP,
+							 		  FxS1, FyS1, FxS2, FyS2, FxS3, FyS3 );
 
-					// constant over each face but oh well
-					const int    idf  = i + p_NfqNfaces * p_Nfgeo * e;
-					const dfloat nxJ  = fgeo[ idf ];
-					const dfloat nyJ  = fgeo[ idf + p_NfqNfaces ];
-					const dfloat sJ   = fgeo[ idf + 2 * p_NfqNfaces ];
-					const dfloat nx   = nxJ / sJ;
-					const dfloat ny   = nyJ / sJ;
-					const dfloat LM   = abs( uM * nx + vM * ny ) + sqrt( p_g * hM );
-					const dfloat LP   = abs( uP * nx + vP * ny ) + sqrt( p_g * hP );
-					const dfloat LFc  = fmax( LM, LP );
-					const dfloat LfsJ = HALF * p_tau * LFc * sJ;
+						// constant over each face but oh well
+						const int    idf  = i + p_NfqNfaces * p_Nfgeo * e;
+						const dfloat nxJ  = fgeo[ idf ];
+						const dfloat nyJ  = fgeo[ idf + p_NfqNfaces ];
+						const dfloat sJ   = fgeo[ idf + 2 * p_NfqNfaces ];
+						const dfloat nx   = nxJ / sJ;
+						const dfloat ny   = nyJ / sJ;
+						const dfloat LM   = abs( uM * nx + vM * ny ) + sqrt( p_g * hM );
+						const dfloat LP   = abs( uP * nx + vP * ny ) + sqrt( p_g * hP );
+						const dfloat LFc  = fmax( LM, LP );
+						const dfloat LfsJ = HALF * p_tau * LFc * sJ;
 
-					const dfloat dF1 = LfsJ * ( hP - hM );
-					const dfloat dF2 = LfsJ * ( hP * uP - hM * uM );
-					const dfloat dF3 = LfsJ * ( hP * vP - hM * vM );
+						const dfloat dF1 = LfsJ * ( hP - hM );
+						const dfloat dF2 = LfsJ * ( hP * uP - hM * uM );
+						const dfloat dF3 = LfsJ * ( hP * vP - hM * vM );
 
-					// update the flux after Lax–Friedrichs penalization
-					s_fnS[ k_e ][ 0 ][ i ] = FxS1 * nxJ + FyS1 * nyJ - dF1;
-					s_fnS[ k_e ][ 1 ][ i ] = FxS2 * nxJ + FyS2 * nyJ - dF2;
-					s_fnS[ k_e ][ 2 ][ i ] = FxS3 * nxJ + FyS3 * nyJ - dF3;
-					// cout << "dF1: " << dF1 << endl;
-					// cout << "dF2: " << dF2 << endl;
-					// cout << "dF3: " << dF3 << endl;
-					// cout << "s_fnS[ 0 ][ " << i <<" ]: " << s_fnS[ 0 ][ i ] <<endl;
-					// cout << "s_fnS[ 1 ][ " << i <<" ]: " << s_fnS[ 1 ][ i ] <<endl;
-					// cout << "s_fnS[ 2 ][ " << i <<" ]: " << s_fnS[ 2 ][ i ] <<endl<<endl;
-				} // i < NfqNfaces      
-			}
-		}
+						// update the flux after Lax–Friedrichs penalization
+						s_fnS[ k_e ][ 0 ][ i ] = FxS1 * nxJ + FyS1 * nyJ - dF1;
+						s_fnS[ k_e ][ 1 ][ i ] = FxS2 * nxJ + FyS2 * nyJ - dF2;
+						s_fnS[ k_e ][ 2 ][ i ] = FxS3 * nxJ + FyS3 * nyJ - dF3;
+						// cout << "dF1: " << dF1 << endl;
+						// cout << "dF2: " << dF2 << endl;
+						// cout << "dF3: " << dF3 << endl;
+						// cout << "s_fnS[ 0 ][ " << i <<" ]: " << s_fnS[ 0 ][ i ] <<endl;
+						// cout << "s_fnS[ 1 ][ " << i <<" ]: " << s_fnS[ 1 ][ i ] <<endl;
+						// cout << "s_fnS[ 2 ][ " << i <<" ]: " << s_fnS[ 2 ][ i ] <<endl<<endl;
+					} // i < NfqNfaces      
+				}//inner0
+			}// e < K
+		}//k_e
 		@barrier( "localMemFence" );
 
 		// loop over all the elements in the group
 		for( int k_e = 0; k_e < p_KblkS; ++k_e; @inner( 1 ) ){  
 			const int e = k_g_e_start + k_e;
-			// apply lift and inverse jacobian
-			// p_T: max( number of volume nodes, number of face nodes);
-			for( int i = 0; i < p_T; ++i; @inner( 0 ) ){
-				if( i < p_Np ){
-					dfloat val[ p_Nfields ];
-					for( int fld = 0; fld < p_Nfields; ++fld ){
-						val[ fld ] = ZERO; 
-					}	
-					// multiplying the lifting matrix
-					for( int j = 0; j < p_NfqNfaces; ++j ){
-						const dfloat Lfij = Lf[ i + j * p_Np ];
-						for( int fld = 0; fld < p_Nfields; ++fld ){		  
-							val[ fld ] += Lfij * s_fnS[ k_e ][ fld ][ j ];
+			if( e < K ){
+				// apply lift and inverse jacobian
+				// p_T: max( number of volume nodes, number of face nodes);
+				for( int i = 0; i < p_T; ++i; @inner( 0 ) ){
+					if( i < p_Np ){
+						dfloat val[ p_Nfields ];
+						for( int fld = 0; fld < p_Nfields; ++fld ){
+							val[ fld ] = ZERO; 
+						}	
+						// multiplying the lifting matrix
+						for( int j = 0; j < p_NfqNfaces; ++j ){
+							const dfloat Lfij = Lf[ i + j * p_Np ];
+							for( int fld = 0; fld < p_Nfields; ++fld ){		  
+								val[ fld ] += Lfij * s_fnS[ k_e ][ fld ][ j ];
+							}
 						}
-					}
-					// transfer to output variable
-					int id = i + e * p_Np * p_Nfields;
-					for( int fld = 0; fld < p_Nfields; ++fld ){
-						rhs[ id ] += val[ fld ]; id += p_Np;
-					}
+						// transfer to output variable
+						int id = i + e * p_Np * p_Nfields;
+						for( int fld = 0; fld < p_Nfields; ++fld ){
+							rhs[ id ] += val[ fld ]; id += p_Np;
+						}
 
-				}// if (i < p_Np)
-
-			}//inner0
+					}// if (i < p_Np)
+				}//inner0
+			}// e < K
 		}//k_e
 
 	}// k_g
@@ -695,65 +711,68 @@ void SWE2d_Vflux( const dfloat hL, const dfloat hR, const dfloat uL,
 		const int k_g_e_start = k_g * p_KblkU;
 		for( int k_e = 0; k_e < p_KblkU; ++k_e; @inner( 1 ) ){
 			const int e = k_g_e_start + k_e;
-			// loop over all quadrature points
-			for( int i = 0; i < p_Nq; ++i; @inner( 0 ) ){
-				if( i < p_Np ){
-					const dfloat J = vgeo[ i + ( p_Nvgeo - 1 ) * p_Nq + p_Nvgeo * p_Nq * e ];
+			if( e < K ){
+				// loop over all quadrature points
+				for( int i = 0; i < p_Nq; ++i; @inner( 0 ) ){
+					if( i < p_Np ){
+						const dfloat J = vgeo[ i + ( p_Nvgeo - 1 ) * p_Nq + p_Nvgeo * p_Nq * e ];
 
-					// update vol values
-					dfloat Qi[ p_Nfields ];
-					// get the index for the quadrature node
-					int Qid = i + e * ( p_Nfields + 1 ) * p_Np;
-					int Rid = i + e * p_Nfields * p_Np;
-					for( int fld = 0; fld < p_Nfields; ++fld ){
+						// update vol values
+						dfloat Qi[ p_Nfields ];
+						// get the index for the quadrature node
+						int Qid = i + e * ( p_Nfields + 1 ) * p_Np;
+						int Rid = i + e * p_Nfields * p_Np;
+						for( int fld = 0; fld < p_Nfields; ++fld ){
 
-						// load rhs, residual, solution
-						const dfloat rhsi = -rhs[ Rid ] / J; // make neg for rhs
+							// load rhs, residual, solution
+							const dfloat rhsi = -rhs[ Rid ] / J; // make neg for rhs
 
-						// RK time integration part
-						dfloat resi = res[ Rid ];
-						Qi[ fld ] = Q[ Qid ];
+							// RK time integration part
+							dfloat resi = res[ Rid ];
+							Qi[ fld ] = Q[ Qid ];
 
-						// update residual and solution
-						resi = fa * resi + fdt * rhsi;	  
-						Qi[ fld ] += fb * resi;
+							// update residual and solution
+							resi = fa * resi + fdt * rhsi;	  
+							Qi[ fld ] += fb * resi;
 
-						// store updated residual and solution
-						res[ Rid ] = resi;	  
-						Q[ Qid ] = Qi[ fld ];
+							// store updated residual and solution
+							res[ Rid ] = resi;	  
+							Q[ Qid ] = Qi[ fld ];
 
-						s_Q[ k_e ][ fld ][ i ] = Qi[ fld ]; // store to shared mem
+							s_Q[ k_e ][ fld ][ i ] = Qi[ fld ]; // store to shared mem
 
-						Rid += p_Np;
-						Qid += p_Np;
-					}      
-				}//if( i < p_Np )
-			}//inner( 0 )
+							Rid += p_Np;
+							Qid += p_Np;
+						}      
+					}//if( i < p_Np )
+				}//inner( 0 )
+			}// e < K
 		}//k_e
 		@barrier( "localMemFence" );
 
 		for( int k_e = 0; k_e < p_KblkU; ++k_e; @inner( 1 ) ){
 			const int e = k_g_e_start + k_e;
 			// interpolate conservative variabes to quad points
-			for(int i = 0; i < p_Nq; ++i; @inner( 0 ) ){
-				dfloat val[ p_Nfields ];
-				for( int fld = 0; fld < p_Nfields; ++fld ){
-					val[ fld ] = ZERO; 
-				}	
-				for( int j = 0; j < p_Np; ++j ){
-					const dfloat Vqij = Vq[ i + j * p_Nq ];
+			if( e < K ){
+				for(int i = 0; i < p_Nq; ++i; @inner( 0 ) ){
+					dfloat val[ p_Nfields ];
 					for( int fld = 0; fld < p_Nfields; ++fld ){
-						val[ fld ] += Vqij * s_Q[ k_e ][ fld ][ j ];
+						val[ fld ] = ZERO; 
+					}	
+					for( int j = 0; j < p_Np; ++j ){
+						const dfloat Vqij = Vq[ i + j * p_Nq ];
+						for( int fld = 0; fld < p_Nfields; ++fld ){
+							val[ fld ] += Vqij * s_Q[ k_e ][ fld ][ j ];
+						}
 					}
-				}
 
-				// store values in Qv
-				int id = i + p_Nq * ( p_Nfields + 1 ) * e;
-				for( int fld = 0; fld < p_Nfields; ++fld ){      
-					Qv[ id ] = val[ fld ]; id += p_Nq;
-				}
-			  
-			}//inner( 0 )
+					// store values in Qv
+					int id = i + p_Nq * ( p_Nfields + 1 ) * e;
+					for( int fld = 0; fld < p_Nfields; ++fld ){      
+						Qv[ id ] = val[ fld ]; id += p_Nq;
+					}
+				}//inner( 0 )
+			}// e < K
 		}//k_e
 	}//k_g
 }

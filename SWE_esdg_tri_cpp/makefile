@@ -1,6 +1,6 @@
 PROJ_DIR:=$(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 OCCA_DIR = /Users/wuxinhui/occa
-#OCCA_DIR = /home/philipwxh/occa
+# OCCA_DIR = /home/philipwxh/occa
 
 ifndef OCCA_DIR
   include $(PROJ_DIR)/../../../scripts/Makefile

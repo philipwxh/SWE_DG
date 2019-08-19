@@ -88,3 +88,53 @@ void H2BTMSWESolution2d( MatrixXd x, MatrixXd y, double t, dfloat &g,
   }
   h = H - b;
 }
+
+void SWE_sol_err( int N, int K1D, double g, double FinalTime, Mesh *mesh, MatrixXd &Q, MatrixXd &btm, 
+  void ( *SWE_solution )( MatrixXd, MatrixXd, double, double &, MatrixXd &, MatrixXd &, MatrixXd &, MatrixXd &),
+                   double &Linf_err, double &L2_err ){
+  // update the 2D SWE term h, hu and hv onto CPU
+  MatrixXd h  = Q.middleRows( 0, mesh->Np );
+  MatrixXd hu = Q.middleRows( mesh->Np, mesh->Np );
+  MatrixXd hv = Q.middleRows( 2 * mesh->Np, mesh->Np );
+  MatrixXd hex_inf, uex_inf, vex_inf;
+  SWE_solution( mesh->x, mesh->y, FinalTime, g, hex_inf, uex_inf, vex_inf, btm );
+
+  MatrixXd huex_inf = hex_inf.array() * uex_inf.array();
+  MatrixXd hvex_inf = hex_inf.array() * vex_inf.array();
+  // evaluate the L2 error
+  MatrixXd SWE_hError  = ( hex_inf  - h  ).array().abs();
+  MatrixXd SWE_huError = ( huex_inf - hu ).array().abs();
+  MatrixXd SWE_hvError = ( hvex_inf - hv ).array().abs();
+  Linf_err = max( SWE_hError.maxCoeff(), max( SWE_huError.maxCoeff(), SWE_hvError.maxCoeff() ) );
+  printf( "L_inf for SWE = %g\n", Linf_err );
+
+  // finer quadrature for error eval
+  Mesh *mesh_err = new Mesh;
+  TriMesh2d( mesh_err, 2 * K1D, K1D ); 
+  InitRefTri( mesh_err, N + 2 );
+
+  MatrixXd wq_err = mesh_err->wq;
+
+  MatrixXd Vqtmp = Vandermonde2D( N, mesh_err->rq, mesh_err->sq );
+  MatrixXd Vq = Vandermonde2D( N, mesh->rq, mesh->sq );  
+  MatrixXd Vq2 = mrdivide( Vqtmp, Vq );
+  MatrixXd wJq = wq_err.asDiagonal() * ( Vq2 * ( mesh->Vq * mesh->J ) );  
+
+  MatrixXd xq2 = Vq2 * ( mesh->Vq * mesh->x );
+  MatrixXd yq2 = Vq2 * ( mesh->Vq * mesh->y );
+  MatrixXd btmq = Vq2 * ( mesh->Vq * btm );
+  MatrixXd hex, uex, vex;
+
+  SWE_solution( xq2, yq2, FinalTime, g, hex, uex, vex, btmq );
+
+  MatrixXd huex = hex.array() * uex.array();
+  MatrixXd hvex = hex.array() * vex.array();
+
+  MatrixXd werr = wJq.array()*(
+                  ( hex  - Vq2 * ( mesh->Vq * h  ) ).array().square() +
+                  ( huex - Vq2 * ( mesh->Vq * hu ) ).array().square() +
+                  ( hvex - Vq2 * ( mesh->Vq * hv ) ).array().square() );
+  L2_err = sqrt( werr.sum() );
+  printf( "L2 error for SWE = %g\n", L2_err );
+  delete( mesh_err );
+}
