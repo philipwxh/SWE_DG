@@ -164,11 +164,8 @@ int main( int argc, char **argv ){
   // define macros for OCCA kernels
   app->props[ "defines/p_Np" ] = mesh->Np; // number of dims
   app->props[ "defines/p_Nq" ] = Nq;
-  cout << "Nq = " << Nq << endl;
   app->props[ "defines/p_Nfq" ] = mesh->Nfq; // number of face quadrature points on each face
   app->props[ "defines/p_NfqNfaces" ] = NfqNfaces;  
-  cout << "NfqNfaces = " << NfqNfaces << endl;
-
   app->props[ "defines/p_NqT" ] = Nq + NfqNfaces; // total quadrature point 
   app->props[ "defines/p_T" ] = max( mesh->Nfq * mesh->Nfaces, mesh->Np );
   

@@ -15,6 +15,8 @@
 #define PRINT_ERR 0
 #define CAL_RES 0
 
+
+
 int main( int argc, char **argv ){
   clock_t time_setup = clock();
   // N: default the degree of the polynomial
@@ -202,57 +204,47 @@ int main( int argc, char **argv ){
   app->props[ "defines/p_Nvgeo" ] = Nvgeo;
   app->props[ "defines/p_Nfgeo" ] = Nfgeo;
 
-  int KblkP = 4; int KblkV = 4; int KblkS = 4; int KblkU = 4;
-  // number of elements in one group for project kernel
-  app->props[ "defines/p_KblkP" ] = KblkP;
-  // number of elements in one group for volume kernel
-  app->props[ "defines/p_KblkV" ] = KblkV;
-  // number of elements in one group for surface kernel
-  app->props[ "defines/p_KblkS" ] = KblkS;
-  // number of elements in one group for update kernel
-  app->props[ "defines/p_KblkU" ] = KblkU;
-
+  // switch dfloat type (double/float) in types.h
+  // switch between single precision and double precision
+  if ( sizeof( dfloat ) == 4 ){
+    app->props[ "defines/USE_DOUBLE" ] = 0;
+  }else{
+    app->props[ "defines/USE_DOUBLE" ] = 1;
+  }
   // 1.f is single precision floating point
   // 1.0 is double precision floating point
   app->props[ "defines/p_Nfields" ] = Nfields;
   if (sizeof( dfloat ) == 4 ){
-    app->props[ "defines/USE_DOUBLE" ] = 0;
-    app->props[ "defines/p_tau" ]      = ( float )  tau;
-    app->props[ "defines/p_g" ]        = ( float )  g;
-    app->props[ "defines/p_g_half" ]   = ( float ) 0.5 * g;
+    app->props[ "defines/p_tau" ] = ( float )  tau;
+    app->props[ "defines/p_g" ]   = ( float )  g;
   }else{
-    app->props[ "defines/USE_DOUBLE" ] = 1;
-    app->props[ "defines/p_tau" ]      = ( double ) tau;
-    app->props[ "defines/p_g" ]        = ( double ) g;
-    app->props[ "defines/p_g_half" ]   = ( double ) 0.5 * g;
+    app->props[ "defines/p_tau" ] = ( double ) tau;
+    app->props[ "defines/p_g" ]   = ( double ) g;
   }
 
-occa::memory o_rhsv_DEBUG, o_rt;
+occa::memory o_rhsv, o_rt;
 #if DEBUG
   // for right hand side test only
-  MatrixXd rhsv_DEBUG( Nfields * Np, K );
-  rhsv_DEBUG.fill( 0.0 );
-  setOccaArray( app, rhsv_DEBUG, o_rhsv_DEBUG );
+  MatrixXd rhsv( Nfields * Np, K );
+  rhsv.fill( 0.0 );
+  setOccaArray( app, rhsv, o_rhsv );
   MatrixXd rt( K, 1 );
   rt.fill( 0.0 );
   occa::memory o_rhstest;
   setOccaArray( app, rt, o_rt );
   app->props[ "defines/DEBUG" ] = 1;
 #else
-  setOccaArray( app, MatrixXd::Zero( 1, 1 ), o_rhsv_DEBUG );
+  setOccaArray( app, MatrixXd::Zero( 1, 1 ), o_rhsv );
 #endif
 
   // build occa kernels  
-  string path = "okl/SWE2DCurve.okl";
+  string path = "okl/SWE2DCurve_baseline.okl";
   // volume  : Calculate the volume contribution for SWE
   // surface : Calculate the surface flux contribution for SWE
   // update  : Multiple right hand side by Mass matrix inverse and perform RK4 over time
   // project : Calculate the entropy projection for SWE
-  //testing
-  occa::kernel volume1, volume2, volume3, surface, update, project, rhstest;
-  volume1 = app->device.buildKernel( path.c_str(), "volume1", app->props );
-  volume2 = app->device.buildKernel( path.c_str(), "volume2", app->props );
-  volume3 = app->device.buildKernel( path.c_str(), "volume3", app->props );
+  occa::kernel volume, surface, update, project, rhstest;
+  volume  = app->device.buildKernel( path.c_str(), "volume" , app->props );
   surface = app->device.buildKernel( path.c_str(), "surface", app->props );
   update  = app->device.buildKernel( path.c_str(), "update" , app->props );
   project = app->device.buildKernel( path.c_str(), "project", app->props );
@@ -419,10 +411,9 @@ occa::memory o_rhsv_DEBUG, o_rt;
   setOccaArray( app, fgeo, o_fgeo );
 
   // calculated right hand side timestep stuff
-  occa::memory o_rhs, o_res, o_rhsv;
+  occa::memory o_rhs, o_res;
   setOccaArray( app, MatrixXd::Zero( Np * Nfields, K ), o_rhs );
   setOccaArray( app, MatrixXd::Zero( Np * Nfields, K ), o_res );  
-  setOccaArray( app, MatrixXd::Zero( NqT * Nfields, K ), o_rhsv ); 
 
   // occa operators
   occa::memory o_M_inv, o_wq, o_QNr, o_QNs, o_VfTWf, o_Vq, o_VN; 
@@ -493,10 +484,10 @@ occa::memory o_rhsv_DEBUG, o_rt;
       const dfloat fb  = ( dfloat ) mesh->rk4b[ INTRK ];
       // cout << "Qv block: row: " << Qv.rows() << " . col: "<< Qv.cols() << ". " << endl << Qv << endl << endl;
       // entropy projection
-      project( K, o_M_inv, o_VN, o_WqJJ, o_Qv, o_Qf, o_rhsv_DEBUG );
+      project( K, o_M_inv, o_VN, o_WqJJ, o_Qv, o_Qf, o_rhsv );
 
-      // getOccaArray( app, o_rhsv_DEBUG, rhsv_DEBUG );
-      // cout << "rhsv_DEBUG block: row: " << rhsv_DEBUG.rows() << " . col: "<< rhsv_DEBUG.cols() << ". " << endl << rhsv_DEBUG << endl << endl;
+      // getOccaArray( app, o_rhsv, rhsv );
+      // cout << "rhsv block: row: " << rhsv.rows() << " . col: "<< rhsv.cols() << ". " << endl << rhsv << endl << endl;
 
       // getOccaArray( app, o_Qv, Qv );
       // cout << "Qv block: row: " << Qv.rows() << " . col: "<< Qv.cols() << ". " << endl << Qv << endl << endl;
@@ -505,23 +496,12 @@ occa::memory o_rhsv_DEBUG, o_rt;
       // return 0;
 
       // compute the volume term with computing device
-      volume1( K, o_rxJJ, o_ryJJ, o_sxJJ, o_syJJ, o_gBTx, o_gBTy,
-                  o_QNr, o_QNs, o_Qv, o_Qf, o_rhsv );
-      // MatrixXd rhsv( NqT * Nfields, K );
-      // getOccaArray( app, o_rhsv, rhsv );
-      // cout << "rhsv block: row: " << rhsv.rows() << " . col: "<< rhsv.cols() << ". " << endl << rhsv << endl << endl;
-
-      volume2( K, o_rxJJ, o_ryJJ, o_sxJJ, o_syJJ,
-                  o_QNr, o_QNs, o_Qv, o_Qf, o_rhsv );
-      // getOccaArray( app, o_rhsv, rhsv );
-      // cout << "rhsv block: row: " << rhsv.rows() << " . col: "<< rhsv.cols() << ". " << endl << rhsv << endl << endl;
-
-      volume3( K, o_VN, o_rhsv, o_rhs );
+      volume( K, o_rxJJ, o_ryJJ, o_sxJJ, o_syJJ, o_gBTx, o_gBTy,
+             o_QNr, o_QNs, o_VN, o_Qv, o_Qf, o_rhs );
 
       // MatrixXd rhs( Np * Nfields, K );
       // getOccaArray( app, o_rhs, rhs );
       // cout << "rhs block: row: " << rhs.rows() << " . col: "<< rhs.cols() << ". " << endl << rhs << endl << endl;
-      // if (INTRK == 1)
       // return 0;
 
       // compute the suface term with computing device
@@ -547,7 +527,8 @@ occa::memory o_rhsv_DEBUG, o_rt;
     }
 #if DEBUG
     // right hand side test
-    rhstest( K, o_M_inv, o_WqJJ, o_VN, o_rhs, o_rhsv_DEBUG, o_rt );
+    rhstest( K, o_M_inv, o_WqJJ, o_VN, o_rhs, o_rhsv, o_rt );
+    getOccaArray( app, o_rt, rt );
     cout << "right hand side test is " << rt.sum() << endl;
 #endif
     // cout << "right hand side test is " << rt2.sum() << endl;

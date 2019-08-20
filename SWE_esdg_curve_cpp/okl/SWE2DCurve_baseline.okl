@@ -1,0 +1,779 @@
+#define USE_DOUBLE 1
+
+#if USE_DOUBLE
+#define dfloat double
+#define dfloat4 double4
+#define LOGDF log
+#define POWDF pow
+#define EXPDF exp
+#define HALF .5
+#define ONE 1.0
+#define TWO 2.0
+#define ZERO 0.0
+#define TOL 1.e-3
+#define C1 .3333333333333
+#define C2 .2
+#define C3 0.142857142857143
+#define C4 .1111111111111111
+#define TOL_ZERO 1.e-14
+
+#else
+#define dfloat float
+#define dfloat4 float4
+#define LOGDF logf
+#define POWDF powf
+#define EXPDF expf
+#define HALF .5f
+#define ONE 1.f
+#define TWO 2.f
+#define ZERO 0.f;
+#define TOL 1.fe-3
+#define C1 .333333333f
+#define C2 .2f
+#define C3 0.142857142857143f
+#define C4 .1111111111111111f
+#define TOL_ZERO 1.fe-14
+#endif
+
+// helpful functions
+// take the average of two numbers
+#define avg( a, b ) HALF * ( a + b )
+
+// entropy project function v(u)
+void VU( dfloat h, dfloat hu, dfloat hv, dfloat b,
+		 dfloat &V1, dfloat &V2, dfloat &V3 ){
+	/* inputs:
+	h:  SWE water height
+	hu: SWE h * u, u is water velocity in the x direction
+	hv: SWE h * v, v is water velocity in the y direction
+	b:  SWE bottom height
+	V1: SWE entropy variable for h component
+	V2: SWE entropy variable for hu component
+	V3: SWE entropy variable for hv component
+	other:
+	g:  SWE gravitational constant
+	*/
+	V2 = hu / h;
+	V3 = hv / h;
+	V1 = p_g * h + p_g * b - 0.5 * ( V2 * V2 + V3 * V3 );
+}
+
+// entropy project function u(v)
+void UV( dfloat V1, dfloat V2, dfloat V3, dfloat b,
+	     dfloat &h, dfloat &hu,dfloat &hv ){
+	/* inputs:
+	V1: SWE entropy variable for h component
+	V2: SWE entropy variable for hu component
+	V3: SWE entropy variable for hv component
+	b:  SWE bottom height
+	g:  SWE gravitational constant
+	h:  SWE water height evalution at quadrature points
+	hu: SWE h * u, evalution at quadrature points
+	hv: SWE h * v, evalution at quadrature points
+	other:
+	g:  SWE gravitational constant
+	*/
+	h = ( V1 + .5 * ( V2 * V2 + V3 * V3 ) ) / p_g - b;
+	hu = h * V2;
+	hv = h * V3;
+}
+
+// compute the flux for SWE 2D (surface flux)
+void SWE2d_Sflux( dfloat hL, dfloat hR, dfloat uL, dfloat uR, dfloat vL, dfloat vR,
+                  dfloat &FxS1, dfloat &FyS1, dfloat &FxS2,
+                  dfloat &FyS2, dfloat &FxS3, dfloat &FyS3 ){
+	/* inputs:
+	hL: 	SWE water height on the left
+	hR: 	SWE water height on the right
+	uL: 	SWE water velocity in x direction on the left
+	uR:  	SWE water velocity in x direction on the right
+	vL:  	SWE water velocity in y direction on the left
+	vR:  	SWE water velocity in y direction on the right
+	FxS123: surface flux for x direction for component 1, 2 and 3
+	FyS123: surface flux for y direction for component 1, 2 and 3
+	other:
+	g:  SWE gravitational constant
+	*/
+	//     h_avg:     {{h}}
+	dfloat h_avg = avg( hL, hR );
+	//     u_avg:     {{u}}
+	dfloat u_avg = avg( uL, uR );
+	//     v_avg:     {{v}}
+	dfloat v_avg = avg( vL, vR );
+	//     half_g_h_sq_avg:  .5 *  g  *    {{h^2}}
+	dfloat half_g_h_sq_avg = .5 * p_g * avg( hL * hL, hR * hR );
+ // FxS1: {{h}}{{u}}
+	FxS1 = h_avg * u_avg;
+ // FyS1: {{h}}{{v}}
+	FyS1 = h_avg * v_avg;
+ // FxS2: {{h}}{{u}}{{u}} + .5g{{h^2}}
+	FxS2 = FxS1 * u_avg + half_g_h_sq_avg;
+ // FyS2: {{h}}{{v}}{{u}}
+	FyS2 = FyS1 * u_avg;
+ // FxS3: {{h}}{{u}}{{v}}, same as FyS2
+	FxS3 = FyS2;
+ // FyS3: {{h}}{{v}}{{v}} + .5g{{h^2}}
+	FyS3 = FyS1 * v_avg + half_g_h_sq_avg;
+}
+
+// compute the flux for SWE 2D (volume flux)
+void SWE2d_Vflux( dfloat hL, dfloat hR, dfloat uL, dfloat uR, dfloat vL, dfloat vR,
+                  dfloat &FxV1, dfloat &FyV1, dfloat &FxV2,
+                  dfloat &FyV2, dfloat &FxV3, dfloat &FyV3 ){
+	/* inputs:
+	hL: 	SWE water height on the left
+	hR: 	SWE water height on the right
+	uL: 	SWE water velocity in x direction on the left
+	uR:  	SWE water velocity in x direction on the right
+	vL:  	SWE water velocity in y direction on the left
+	vR:  	SWE water velocity in y direction on the right
+	FxV123: volume flux for x direction for component 1, 2 and 3
+	FyV123: volume flux for y direction for component 1, 2 and 3
+	other:
+	g:  SWE gravitational constant
+	*/
+	//     h_avg:     {{h}}
+	dfloat h_avg = avg( hL, hR );
+	//     u_avg:     {{u}}
+	dfloat u_avg = avg( uL, uR );
+	//     v_avg:     {{v}}
+	dfloat v_avg = avg( vL, vR );
+	//     half_g_h_sq_avg:  .5 *  g  *    {{h^2}}
+	dfloat half_g_h_sq_avg = .5 * p_g * avg( hL * hL, hR * hR );
+ // FxV1: {{hu}}
+	FxV1 = avg( hL * uL, hR * uR );
+ // FyV1: {{hv}}
+	FyV1 = avg( hL * vL, hR * vR );
+ // FxV2: {{hu}}* {{u}} + g * {{h}} * {{h}}   -   .5g{{h^2}}
+	FxV2 = FxV1 * u_avg + p_g * h_avg * h_avg - half_g_h_sq_avg;
+ // FyV2: {{hv}}* {{u}}
+	FyV2 = FyV1 * u_avg;
+ // FyV2: {{hu}}* {{v}}
+	FxV3 = FxV1 * v_avg;
+ // FyV3: {{hv}}* {{v}} + g * {{h}} * {{h}}   -   .5g{{h^2}}
+	FyV3 = FyV1 * v_avg + p_g * h_avg * h_avg - half_g_h_sq_avg;
+}
+
+// compute L2 projection of entropy variables
+@kernel void project( const int K, 
+	                  const dfloat * M_inv,
+					  const dfloat * VN,
+					  const dfloat * WqJJ,
+		     		  dfloat * Qv, 
+		     		  dfloat * Qf,
+		     		  dfloat * rhsv ){
+	/* inputs:
+	K:   total number of elements in the mesh
+	M_inv: contains mass matrices inverses for all elements
+	Vq:    volume quadrature interpolation matrix
+	VN:    [Vq;Vf]
+	wq:    quadrature weights for volume quadrature points
+	WqJJ:  wq .* (Vq * J ), geometric factors for volume
+	Qv:    variable to hold projected volume values
+	Qf:    variable to hold projected face values
+	*/
+	// loop over all elements, iterator e
+	for( int e = 0; e < K; ++e; @outer( 0 ) ){
+		// declare shared memory for all nodes in one elements
+		// p_Nq: number of volume quadrature points in one element
+		@shared dfloat s_Q[ p_Nfields + 1 ][ p_Nq ];
+		// s_WqJJ: stores wq .* (Vq * J ) column e
+		@shared dfloat s_WqJJ[ p_Nq ];
+		// s_VqTwqJJV: store Vq^T * ( wq .* JJ( :, e ) .* V(u)  )
+		@shared dfloat s_VqTwqJJV[ p_Nfields ][ p_Np ];
+		// s_M_inv_eV: M_inverse * VqTwqJJV
+		@shared dfloat s_M_inv_eV[ p_Nfields ][ p_Np ];
+
+		// extract values of conservative vars at quad pts
+		// p_NqT: total number of quadrature points in one element
+		// loop over all quadrature points in one element
+		for( int i = 0; i < p_NqT; ++i; @inner( 0 ) ){
+			// we project the volume quadrature points first
+			if( i < p_Nq ){
+				// get the index of all fields for that quadrature points
+				int id = i + e * p_Nq * ( p_Nfields + 1 );
+				// extract the info from Qv for the fields
+				const dfloat u1 = Qv[ id ]; id += p_Nq;
+				const dfloat u2 = Qv[ id ]; id += p_Nq;
+				const dfloat u3 = Qv[ id ]; id += p_Nq;
+				const dfloat bt = Qv[ id ];
+				// compute entropy variables at qpts
+				dfloat v1, v2, v3;
+				VU( u1, u2, u3, bt, v1, v2, v3 );
+
+				s_Q[ 0 ][ i ] = v1;
+				s_Q[ 1 ][ i ] = v2;
+				s_Q[ 2 ][ i ] = v3;
+				s_Q[ 3 ][ i ] = bt;
+				s_WqJJ[ i ] = WqJJ[ i + p_Nq * e ];
+			}
+		}//inner( 0 )
+		@barrier( "localMemFence" );
+        
+		// calculate VqTwqJJV
+		// loop over all rows of Vq^T
+		for( int i = 0; i < p_NqT; ++i; @inner( 0 ) ){
+			if( i < p_Np ){
+				// loop over all column of Vq^T
+				// val: accumulate matrix vector multiplication result
+				dfloat val[ p_Nfields ];
+				for( int fld = 0; fld < p_Nfields + 1; ++fld ){
+					val[ fld ] = ZERO; 
+				}
+				for( int j = 0; j < p_Nq; ++j ){
+					// WqJJi: wq .* JJi
+					const dfloat WqJJi = s_WqJJ[ j ];
+					// VqTij: Vq^T(i,j) i * p_NqT get to the ith column, j iterate down
+					const dfloat VqTij = VN[ i * p_NqT + j ];
+					for ( int fld = 0; fld < p_Nfields; ++fld ){
+						val[ fld ] += VqTij * WqJJi * s_Q[ fld ][ j ];
+					}
+				}
+				for ( int fld = 0; fld < p_Nfields; ++fld ){
+					s_VqTwqJJV[ fld ][ i ] = val[ fld ];
+				}
+			}
+		}//inner( 0 )
+		@barrier( "localMemFence" );
+
+		// compute M_inverse * VqTwqJJV
+        for( int i = 0; i < p_NqT; ++i; @inner( 0 ) ){
+			if( i < p_Np ){
+				// val: accumulate matrix vector multiplication result
+	        	dfloat val[ p_Nfields ];
+				for( int fld = 0; fld < p_Nfields + 1; ++fld ){
+					val[ fld ] = ZERO; 
+				}
+				for( int j = 0; j < p_Np; ++j ){
+			        // Mij: mass matrix inverse( i, j )
+					const dfloat Mij = M_inv[ i + p_Np * e + K * p_Np * j ];
+					for( int fld = 0; fld < p_Nfields; ++fld ){
+						val[ fld ] += Mij * s_VqTwqJJV[ fld ][ j ];
+					}
+				}
+				// update s_M_inv_eV result
+				for( int fld = 0; fld < p_Nfields; ++fld ){
+					s_M_inv_eV[ fld ][ i ] = val[ fld ]; 
+				}
+			}
+		}//inner( 0 )
+		@barrier( "localMemFence" );
+#if DEBUG
+	    // rhstest for debugging
+		for( int i = 0; i < p_NqT; ++i; @inner( 0 ) ){
+			if( i < p_Np ){
+				int rhsv_idx = i + p_Np * p_Nfields * e;
+				for( int fld = 0; fld < p_Nfields; ++fld ){
+					rhsv[ rhsv_idx ] = s_M_inv_eV[ fld ][ i ];
+					rhsv_idx += p_Np;
+				}
+			}
+		}//inner( 0 )
+		@barrier( "localMemFence" );
+#endif
+
+		// // compute projection of entropy variables
+		for( int i = 0; i < p_NqT; ++i; @inner( 0 ) ){
+			// val: accumulate matrix vector multiplication result
+			dfloat val[ p_Nfields ];
+			for( int fld = 0; fld < p_Nfields; ++fld ){
+				val[ fld ] = ZERO; 
+			}
+
+			// multiply each field of v(u) by (VN * Pq)
+			for( int j = 0; j < p_Np; ++j ){
+				// VNij = VN(i,j) 
+				const dfloat VNij = VN[ i + j * p_NqT ];
+				for ( int fld = 0; fld < p_Nfields; ++fld ){
+					val[ fld ] += VNij * s_M_inv_eV[ fld ][ j ];
+				}
+			}
+
+			// convert entropy to conservative variables and store
+			const dfloat v1 = val[ 0 ];
+			const dfloat v2 = val[ 1 ];
+			const dfloat v3 = val[ 2 ];
+			// get the bottom geometry for projection
+			dfloat bt;
+			if( i < p_Nq ){
+				bt = s_Q[ 3 ][ i ];
+			}else{ 
+				// e * ( p_Nfields + 1 ) * p_NfqNfaces reach the column of this element
+				int idb = e * ( p_Nfields + 1 ) * p_NfqNfaces;
+				// p_Nfields * p_NfqNfaces skip hf,uf,vf in that column
+				// i - p_Nq index into the face quadrature pt of bottom geometry
+				idb += i - p_Nq + p_Nfields * p_NfqNfaces;
+				bt = Qf[ idb ];
+			}
+			// compute the projection UV
+			dfloat u1,u2,u3;
+			UV( v1, v2, v3, bt, u1, u2, u3 );      
+
+			// idv: index for volume nodes info
+			int idv = i + e * ( p_Nfields + 1 ) * p_Nq;
+			// idf: index for face nodes info
+			int idf = ( i - p_Nq ) + e * ( p_Nfields + 1 ) * p_NfqNfaces;
+			// update the projection 
+			if( i < p_Nq ){
+				Qv[ idv ] = u1; idv += p_Nq;
+				Qv[ idv ] = u2; idv += p_Nq;
+				Qv[ idv ] = u3; 
+			}else{
+				Qf[ idf ] = u1; idf += p_NfqNfaces;
+				Qf[ idf ] = u2; idf += p_NfqNfaces;
+				Qf[ idf ] = u3;
+			}      
+		}//inner( 0 )
+		@barrier( "localMemFence" );
+	}//outer( 0 )
+}
+
+
+// simplified volume kernel
+@kernel void volume( const int K,
+		    		 const dfloat *  rxJJ,
+		    		 const dfloat *  ryJJ,
+		    		 const dfloat *  sxJJ,
+		    		 const dfloat *  syJJ,
+		    		 const dfloat *  gBTMx,
+		    		 const dfloat *  gBTMy,
+		    		 const dfloat *  QNr,
+		    		 const dfloat *  QNs,
+		    		 const dfloat *  VN,
+		    		 const dfloat *  Qv,
+		    		 const dfloat *  Qf,
+		    		       dfloat *  rhs ){
+	/* inputs:
+	K:    total number of mesh elements
+	rxJJ:  VN * ( mesh->rxJ );
+	ryJJ:  VN * ( mesh->ryJ );
+	sxJJ:  VN * ( mesh->sxJ );
+	syJJ:  VN * ( mesh->syJ );
+	gBTMx: g * QNx * BTM, x derivative of bottom geometry
+	gBTMy: g * QNy * BTM, y derivative of bottom geometry
+	QNr:   skew symmetric form of SBP matrix for r direction
+	QNs:   skew symmetric form of SBP matrix for s direction
+    VN:    [Vq;Vf]
+    Qv:    variable to hold projected volume values
+	Qf:    variable to hold projected face values
+    rhs:   variable to hold updated right hand side information
+	*/ 	
+    // looping over all the elements
+	for( int e = 0; e < K; ++e; @outer( 0 ) ){
+
+		// setting up the shared memories for fast read and write
+		// s_Q: store Q values
+		@shared dfloat s_Q[ p_Nfields ][ p_NqT ];
+		@shared dfloat s_gBTx[ p_NqT ];
+		@shared dfloat s_gBTy[ p_NqT ];
+
+		// s_rhsv: store rhs values
+		@shared dfloat s_rhsv[ p_Nfields ][ p_NqT ];
+		// store geometric terms  
+		@shared dfloat s_rxJJ[ p_NqT ]; 
+		@shared dfloat s_ryJJ[ p_NqT ];  
+		@shared dfloat s_sxJJ[ p_NqT ];  
+		@shared dfloat s_syJJ[ p_NqT ];     
+		// assume these are conservative variables
+		// looping over all the quadrature pts
+		for( int i = 0; i < p_NqT; ++i; @inner( 0 ) ){
+            int geo_idx = i + p_NqT * e;
+			s_rxJJ[ i ] = rxJJ[ geo_idx ];
+			s_ryJJ[ i ] = ryJJ[ geo_idx ];
+			s_sxJJ[ i ] = sxJJ[ geo_idx ];
+			s_syJJ[ i ] = syJJ[ geo_idx ];
+			s_gBTx[ i ] = gBTMx[ geo_idx ];
+			s_gBTy[ i ] = gBTMy[ geo_idx ];
+		  
+			// draw from both vol and face values, read out to shared from Qv and Qf
+			// idv: index for the volume value
+			// idf: index for the face value
+			int idv = i + p_Nq * ( p_Nfields + 1 ) * e;
+			int idf = i - p_Nq + p_NfqNfaces * ( p_Nfields + 1 ) * e;      
+			for( int fld = 0; fld < ( p_Nfields ); ++fld ){
+				if( i < p_Nq ){
+					s_Q[ fld ][ i ] = Qv[ idv ]; idv += p_Nq;
+				}else{
+				  	s_Q[ fld ][ i ] = Qf[ idf ]; idf += p_NfqNfaces;
+				}
+			}
+			// skip the bottom geometry part
+			if( i < p_Nq ){
+				idv += p_Nq;
+			}else{
+				idf += p_NfqNfaces;
+			}
+		}//inner( 0 )
+		@barrier( "localMemFence" );           
+
+		// apply flux differencing: sum(Q.*F,2) -> s_rhsv (shared memory)
+		for( int i = 0; i < p_NqT; ++i; @inner( 0 ) ){
+		    // val: store the volume flux 
+			dfloat val[ p_Nfields + 1 ];
+			for( int fld = 0; fld < p_Nfields + 1; ++fld ){
+				val[ fld ] = ZERO; 
+			}
+			// extract the info from the ith node
+			const dfloat h_i     = s_Q[ 0 ][ i ];
+			const dfloat inv_h_i = ONE / h_i;
+			const dfloat u_i     = s_Q[ 1 ][ i ] * inv_h_i;
+			const dfloat v_i     = s_Q[ 2 ][ i ] * inv_h_i;
+            
+			// apply Qr, Qs
+			// in thus loop, we sum the Qxij * FxVij + Qyij * FyVij over j
+			for( int j = 0; j < p_NqT; ++j ){
+				// extract the info from the jth node
+				const dfloat h_j     = s_Q[ 0 ][ j ];
+				const dfloat inv_h_j = ONE / h_j;
+				const dfloat u_j     = s_Q[ 1 ][ j ] * inv_h_j;
+				const dfloat v_j     = s_Q[ 2 ][ j ] * inv_h_j;
+			
+				// compute the volume flux
+				dfloat FxV1, FyV1, FxV2, FyV2, FxV3, FyV3;
+				SWE2d_Vflux( h_i, h_j, u_i, u_j, v_i, v_j,
+				     		 FxV1, FyV1, FxV2, FyV2, FxV3, FyV3 );
+				
+				const dfloat Qrij = HALF * QNr[ i + j * p_NqT ];
+				const dfloat Qsij = HALF * QNs[ i + j * p_NqT ];
+				const dfloat Qx   = Qrij * ( s_rxJJ[i] + s_rxJJ[j] ) +
+				                    Qsij * ( s_sxJJ[i] + s_sxJJ[j] );
+				const dfloat Qy   = Qrij * ( s_ryJJ[i] + s_ryJJ[j] )+
+				                    Qsij * ( s_syJJ[i] + s_syJJ[j] );
+
+				val[ 0 ] += Qx * FxV1 + Qy * FyV1;
+				val[ 1 ] += Qx * FxV2 + Qy * FyV2;
+				val[ 2 ] += Qx * FxV3 + Qy * FyV3;
+			}
+			val[ 1 ] += h_i * s_gBTx[ i ] / 2;
+			val[ 2 ] += h_i * s_gBTy[ i ] / 2;
+			
+			// write out to the shared memory
+			for( int fld = 0; fld < p_Nfields; ++fld ){
+				s_rhsv[ fld ][ i ] = val[ fld ];
+			}
+		}// inner0
+
+		@barrier( "localMemFence" );
+
+		// project s_rhsv using PN = Np x (Nq + Nfq*Nfaces)
+		for( int i = 0; i < p_NqT; ++i; @inner( 0 ) ){
+			if( i < p_Np ){	
+				// val: accumulate matrix vector multiplication result
+				dfloat val[ p_Nfields ];
+				for( int fld = 0; fld < p_Nfields; ++fld ){
+					val[fld] = ZERO; 
+				}
+				// perform the matrix multiplication on s_rhsv	
+				for ( int j = 0; j < p_NqT; ++j ){
+					// VNTij: VN^T(i,j) i * p_NqT get to the ith column, j iterate down
+					const dfloat VNTij = VN[ i * p_NqT + j ];
+					for( int fld = 0; fld < p_Nfields; ++fld ){					
+					 	val[ fld ] += VNTij * s_rhsv[fld][ j ];
+					} 
+				}
+
+				// store output to rhs
+				int id = i + e * p_Nfields * p_Np;
+				for( int fld = 0; fld < p_Nfields; ++fld ){	
+					rhs[ id ] = 2 * val[ fld ]; 
+					id += p_Np;
+				}
+			}// i < p_Np
+		}// inner0
+		@barrier( "localMemFence" );
+	}//outer( 0 )
+}
+
+
+@kernel void surface( const int K,
+		     		  const dfloat * fgeo,		     
+		     		  const int    * mapPq, // face index into volume nodes
+		     		  const int    * bcFlag,
+		     		  const dfloat * VfTWf,  // lifting matrix
+		    		  const dfloat * Qf, // entropy projected variables
+		     		        dfloat * rhs ){
+	/* inputs:
+	K:      total number of mesh elements
+	fgeo:   face node geometric terms [rxJ, rxJf]
+	mapPq:  map from face node to neighbor face node
+	bcFlag: Flag to specify boundary conditions
+    VfTWf:  Vf^T * Wf );
+	Qf:     variable to hold projected face values
+    rhs:    variable to hold updated right hand side information
+	*/ 	
+
+	// loop over all elements
+	for( int e = 0; e < K; ++e; @outer( 0 ) ){
+		// s_fnS: store the surface flux for each element
+		@shared dfloat s_fnS[ p_Nfields ][ p_NfqNfaces ];
+		// loop over all quadrature pts
+		for( int i = 0; i < p_T; ++i; @inner( 0 ) ){
+			if( i < p_NfqNfaces ){
+				// idM: index of current node
+				// idP: index of neighbor node
+				int idM = i + e * ( p_Nfields + 1 ) * p_NfqNfaces;
+				int idP = mapPq[ i + e * p_NfqNfaces ];
+				// cout << "idM: " << idM << endl;
+				// cout << "idP: " << idP << endl << endl << endl;
+				// load +/- values
+				const dfloat hM  = Qf[ idM ];  idM += p_NfqNfaces;
+				const dfloat huM = Qf[ idM ];  idM += p_NfqNfaces;
+				const dfloat hvM = Qf[ idM ];
+
+				const dfloat hP  = Qf[ idP ];  idP += p_NfqNfaces;
+				const dfloat huP = Qf[ idP ];  idP += p_NfqNfaces;
+				const dfloat hvP = Qf[ idP ];
+
+				const dfloat inv_hM = ONE / hM;
+				const dfloat uM     = huM * inv_hM;
+				const dfloat vM     = hvM * inv_hM;
+				const dfloat inv_hP = ONE / hP; 	
+				const dfloat uP     = huP * inv_hP;	
+				const dfloat vP     = hvP * inv_hP;
+ 
+				// compute the surface flux
+				dfloat FxS1,FxS2,FxS3,FyS1,FyS2,FyS3;      
+				SWE2d_Sflux( hM, hP, uM, uP, vM, vP,
+					 		  FxS1, FyS1, FxS2, FyS2, FxS3, FyS3 );
+
+				// use skew symmetric form to remove the calculation of the volume flux
+				// dfloat FxV1, FyV1, FxV2, FyV2, FxV3, FyV3;
+				// SWE2d_Vflux( hM, hM, uM, uM, vM, vM,
+				//      		 FxV1, FyV1, FxV2, FyV2, FxV3, FyV3 );
+
+				// constant over each face but oh well
+				const int    idf  = i + p_NfqNfaces * p_Nfgeo * e;
+				const dfloat nxJ  = fgeo[ idf ];
+				const dfloat nyJ  = fgeo[ idf + p_NfqNfaces ];
+				const dfloat sJ   = fgeo[ idf + 2 * p_NfqNfaces ];
+				const dfloat nx   = nxJ / sJ;
+				const dfloat ny   = nyJ / sJ;
+				const dfloat LM   = abs( uM * nx + vM * ny ) + sqrt( p_g * hM );
+				const dfloat LP   = abs( uP * nx + vP * ny ) + sqrt( p_g * hP );
+				const dfloat LFc  = fmax( LM, LP );
+				const dfloat LfsJ = HALF * p_tau * LFc * sJ;
+
+				const dfloat dF1  = LfsJ * ( hP - hM );
+				const dfloat dF2  = LfsJ * ( hP * uP - hM * uM );
+				const dfloat dF3  = LfsJ * ( hP * vP - hM * vM );
+
+				// s_fnS[ 0 ][ i ] = ( FxS1 - FxV1 ) * nxJ + ( FyS1 - FyV1 ) * nyJ - dF1;
+				// s_fnS[ 1 ][ i ] = ( FxS2 - FxV2 ) * nxJ + ( FyS2 - FyV2 ) * nyJ - dF2;
+				// s_fnS[ 2 ][ i ] = ( FxS3 - FxV3 ) * nxJ + ( FyS3 - FyV3 ) * nyJ - dF3;
+				// use skew symmetric form to remove the calculation of the volume flux
+
+				// update the flux after Lax–Friedrichs penalization
+				s_fnS[ 0 ][ i ] = FxS1 * nxJ + FyS1 * nyJ - dF1;
+				s_fnS[ 1 ][ i ] = FxS2 * nxJ + FyS2 * nyJ - dF2;
+				s_fnS[ 2 ][ i ] = FxS3 * nxJ + FyS3 * nyJ - dF3;
+				
+			} // i < NfqNfaces      
+		}// inner( 0 )
+		@barrier( "localMemFence" );
+
+		// apply lift and inverse jacobian
+		// p_T: max( number of volume nodes, number of face nodes);
+		for( int i = 0; i < p_T; ++i; @inner( 0 ) ){
+
+			if( i < p_Np ){
+
+				dfloat val[ p_Nfields ];
+				for( int fld = 0; fld < p_Nfields; ++fld ){
+					val[ fld ] = ZERO; 
+				}
+
+				// multiplying the lifting matrix
+				for( int j = 0; j < p_NfqNfaces; ++j ){
+					const dfloat VfTWf_ij = VfTWf[ i + j * p_Np ]; 
+					for( int fld = 0; fld < p_Nfields; ++fld ){	 	  
+						val[ fld ] += VfTWf_ij * s_fnS[ fld ][ j ];
+					}
+				}
+
+				// transfer to output variable
+				int id = i + e * p_Np * p_Nfields;
+				for( int fld = 0; fld < p_Nfields; ++fld ){
+					rhs[ id ] += val[ fld ]; id += p_Np;
+				}
+			}// if (i < p_Np)
+
+		}//inner( 0 )
+        @barrier( "localMemFence" );
+	}//outer( 0 )
+}
+
+@kernel void update( const int K,
+		    		 const dfloat fa,
+		    		 const dfloat fb,
+		    		 const dfloat fdt,
+		    		 const dfloat * M_inv,
+		    		 const dfloat * VN,
+		    		       dfloat * Q,
+		    		       dfloat * Qv,		      
+		    		 const dfloat * rhs,
+		    		       dfloat * res ){
+	/* inputs:
+	K:    total number of mesh elements
+	fa:   ( dfloat ) mesh->rk4a[ INTRK ];
+	fb:   ( dfloat ) mesh->rk4b[ INTRK ];
+	fdt:  ( dfloat ) dt;
+	M_inv: contains mass matrices inverses for all elements
+	JJ:    geometric factors for volume	
+	Vq:   volume quadrature interpolation matrix
+	Q:	  Matrix with SWE values
+	Qv:   Vq * Q
+    rhs:  variable holding computed right hand side information
+    res:  residual
+	*/
+	// loop over all elements
+	for( int e = 0; e < K; ++e; @outer( 0 ) ){       
+
+		@shared dfloat s_Q[ p_Nfields ][ p_Np ];
+		// @shared dfloat s_M_inv_e[ p_Np ][ p_Np ];
+		// // cout << "M_inv for this element "<<e <<" is: "<<endl;
+		// for( int i = 0; i < p_Np; ++i; @inner( 0 )){
+		// 	for( int j = 0; j < p_Np; ++j ){
+		// 		// verified idex
+		// 		s_M_inv_e[ i ][ j ] = M_inv[ i + p_Np * e + K * p_Np * j ];
+		// 	}
+		// }
+		// @barrier( "localMemFence" );
+
+		// loop over all quadrature points
+		for( int i = 0; i < p_Nq; ++i; @inner( 0 ) ){
+			if( i < p_Np ){
+				// update vol values
+				// Qi to hold temporary Q value ie (h,hu,hv)
+				dfloat Qi[ p_Nfields ];
+				// get the index for the quadrature node
+				int Qid = i + e * ( p_Nfields + 1 ) * p_Np;
+				int Rid = i + e * p_Nfields * p_Np;
+
+				for( int fld = 0; fld < p_Nfields; ++fld ){
+
+					// load multiple M inverse to rhs
+					dfloat rhsi = ZERO;
+					for( int j = 0; j < p_Np; j++){
+						const dfloat Mij = M_inv[ i + p_Np * e + K * p_Np * j ];
+						rhsi -= Mij * rhs[ Rid - i + j ];
+					}
+					// RK time integration part
+					dfloat resi = res[ Rid ];
+					Qi[ fld ] = Q[ Qid ];
+
+					// update residual and solution
+					resi = fa * resi + fdt * rhsi;	  
+					Qi[ fld ] += fb * resi;
+
+					// store updated residual and solution
+					res[ Rid ] = resi;	  
+					Q[ Qid ] = Qi[ fld ];
+					// store to shared mem
+					s_Q[ fld ][ i ] = Qi[ fld ];
+      				// update index
+					Rid += p_Np;
+					Qid += p_Np;
+				} 
+			}// if( i < p_Np )
+		}//inner( 0 )
+		@barrier( "localMemFence" );
+
+		// interpolate conservative variabes to quad points
+		for( int i = 0; i < p_Nq; ++i; @inner( 0 ) ){
+			// val: accumulate matrix vector multiplication result
+			dfloat val[ p_Nfields ];
+			for( int fld = 0; fld < p_Nfields; ++fld ){
+				val[ fld ] = ZERO; 
+			}	
+			for( int j = 0; j < p_Np; ++j ){
+				// Vqij: Vq(i,j), I get to the ith row, j * p_NqT get to jth column
+				const dfloat Vqij = VN[ i + j * p_NqT ];
+				for( int fld = 0; fld < p_Nfields; ++fld ){
+					val[ fld ] += Vqij * s_Q[ fld ][ j ];
+				}
+			}
+
+			// store values in Qv
+			int id = i + p_Nq * ( p_Nfields + 1 ) * e;
+			for( int fld = 0; fld < p_Nfields; ++fld ){      
+				Qv[ id ] = val[ fld ]; id += p_Nq;
+			}
+		  
+		}//inner( 0 )
+		@barrier( "localMemFence" );
+	}//outer( 0 )
+}
+
+@kernel void rhstest( const int K,
+					  const dfloat * M_inv,
+		    		  const dfloat * WqJJ,   
+		    		  const dfloat * VN,
+		    		  const dfloat * rhs,
+		    		  const dfloat * rhsv,
+		    		        dfloat * rt ){
+	/* inputs:
+	K:     total number of mesh elements
+	M_inv: contains mass matrices inverses for all elements
+	WqJJ:  wq .* (Vq * J ), geometric factors
+	Vq:    volume quadrature interpolation matrix
+	rhsv:  stores the Mk_inv(:,:,e)*(Vq'*(wq.*JJ(:,e).*VV1(:,e))) for all element e
+    rhs:   variable holding computed right hand side information
+    rt:    right hand side test store right-hand-side test result
+	*/
+	// loop over all elements
+	for( int e = 0; e < K; ++e; @outer( 0 ) ){
+		// s_val to keep track rhstest value for element e      
+   		@shared dfloat s_val[p_Nq];
+   		// s_rhs: stores the rhs value from occa
+   		@shared dfloat s_rhs[ p_Nfields ][ p_Np ];
+   		// WqJJ:  wq .* (Vq * J ), geometric factors for volume e
+		@shared dfloat s_WqJJ[ p_Nq ];
+		// loop over all quadrature points
+   		for( int i = 0; i < p_Nq; ++i; @inner( 0 ) ){
+   			if( i < p_Np ){
+   				int Rid = e * p_Nfields * p_Np;
+				for( int fld = 0; fld < p_Nfields; ++fld ){
+					// load multiple M inverse to rhs
+					dfloat rhsi = ZERO;
+					for( int j = 0; j < p_Np; j++){
+						const dfloat Mij = M_inv[ i + p_Np * e + K * p_Np * j ];
+						rhsi -= Mij * rhs[ Rid + j ];
+					}
+					s_rhs[ fld ][ i ] = rhsi;
+					Rid += p_Np;
+				}
+			}
+			s_WqJJ[ i ] = WqJJ[ i + p_Nq * e ];
+		}//inner( 0 )
+		@barrier( "localMemFence" );
+		for( int i = 0; i < p_Nq; ++i; @inner( 0 ) ){
+			// val: accumulate matrix vector multiplication result
+			dfloat val1[ p_Nfields ];
+			dfloat val2[ p_Nfields ];
+			for( int fld = 0; fld < p_Nfields; ++fld ){
+				val1[fld] = ZERO; 
+				val2[fld] = ZERO; 
+			}
+			for( int j = 0; j < p_Np; ++j ){
+				const dfloat Vqij   = VN[ i + j * p_NqT ];
+				int r_idx = e * p_Nfields * p_Np + j;
+				for( int fld = 0; fld < p_Nfields; ++fld ){
+					val1[ fld ] += Vqij * rhsv[ r_idx ];
+					val2[ fld ] += Vqij * s_rhs[ fld ][ j ];
+					r_idx += p_Np;
+				}
+			}
+			
+			s_val[ i ] = 0;
+			for( int fld = 0; fld < p_Nfields; ++fld ){
+				s_val[ i ] += val1[ fld ] * val2[ fld ] * s_WqJJ[ i ];
+			}
+		}//inner( 0 )
+		@barrier( "localMemFence" );
+		rt[ e ] = 0;
+		for( int i = 0; i < p_Nq; ++i; @inner( 0 ) ){
+			rt[ e ] += s_val[ i ];
+		}
+		@barrier( "localMemFence" );
+	}//outer( 0 )
+}

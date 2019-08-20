@@ -455,7 +455,7 @@ void SWE2d_Vflux( const dfloat hL, const dfloat hR, const dfloat uL,
 			// apply flux differencing: sum(Q.*F,2) -> s_rhsv (shared memory)
 			const int e = k_g_e_start + k_e;
 			if( e < K ){
-				for( int i = 0; i < p_NqT; ++i; @inner( 0 ) ){
+				for( int i = 0; i < p_Nq; ++i; @inner( 0 ) ){
 					dfloat val[ p_Nfields ];
 					for( int fld = 0; fld < p_Nfields; ++fld ){
 						val[ fld ] = ZERO; 
