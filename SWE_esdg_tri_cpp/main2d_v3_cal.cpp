@@ -168,6 +168,13 @@ int main( int argc, char **argv ){
   app->props[ "defines/p_NfqNfaces" ] = NfqNfaces;  
   app->props[ "defines/p_NqT" ] = Nq + NfqNfaces; // total quadrature point 
   app->props[ "defines/p_T" ] = max( mesh->Nfq * mesh->Nfaces, mesh->Np );
+  app->props[ "defines/p_Nfields_and_B" ] = Nfields + 1;
+  app->props[ "defines/p_NQ_row" ] = mesh->Np * ( Nfields + 1 );
+  app->props[ "defines/p_NQv_row" ] = Nq * ( Nfields + 1 );
+  app->props[ "defines/p_NQf_row" ] = NfqNfaces * ( Nfields + 1 );
+  app->props[ "defines/p_NQf_B_start" ] = Nfields * NfqNfaces;
+  app->props[ "defines/p_NqT_row" ] = ( Nq + NfqNfaces ) * Nfields;
+  app->props[ "defines/p_NSol_row" ] = ( mesh->Np ) * Nfields;
   
   // number of geometric terms
   // Nvgeo: rxJ, ryJ, sxJ, syJ, J
@@ -177,7 +184,10 @@ int main( int argc, char **argv ){
   app->props[ "defines/p_Nvgeo" ] = Nvgeo;
   app->props[ "defines/p_Nfgeo" ] = Nfgeo;
 
-  int KblkP = 8; int KblkV = 8; int KblkS = 8; int KblkU = 8;
+  int KblkP = 5;
+  int KblkV = 6;
+  int KblkS = 7;
+  int KblkU = 8;
   // number of elements in one group for project kernel
   app->props[ "defines/p_KblkP" ] = KblkP;
   // number of elements in one group for volume kernel
@@ -212,7 +222,7 @@ int main( int argc, char **argv ){
   //  setupOccaMesh2d(mesh,app); // store and pack mesh geofacs in OCCA mem
 
     // build occa kernels  
-  string path = "okl/SWE2DTri.okl";
+  string path = "okl/SWE2DTri_v3_cal.okl";
 
 
   //testing
@@ -298,8 +308,8 @@ int main( int argc, char **argv ){
       gBTMy.middleCols( e, 1 )  = g * QNy_e * BTMq.col( e );
   }
 
-  QNr = .5 * ( QNr - QNr.transpose() );
-  QNs = .5 * ( QNs - QNs.transpose() );
+  MatrixXd QNr_skew = QNr - QNr.transpose();
+  MatrixXd QNs_skew = QNs - QNs.transpose();
 
   occa::memory o_Q, o_Qv, o_Qf; // solution   
   occa::memory o_vgeo, o_fgeo; // geofacs
@@ -340,8 +350,8 @@ int main( int argc, char **argv ){
 //  setOccaArray( app, VN, o_VN );
   setOccaArray( app, Vq, o_Vq );
   setOccaArray( app, Lf, o_Lf );
-  setOccaArray( app, QNr, o_QNr );
-  setOccaArray( app, QNs, o_QNs );
+  setOccaArray( app, QNr_skew, o_QNr );
+  setOccaArray( app, QNs_skew, o_QNs );
   setOccaArray( app, PN, o_PN );
   setOccaArray( app, VNP, o_VNP );
   setOccaArray( app, gBTMx, o_gBTMx );
