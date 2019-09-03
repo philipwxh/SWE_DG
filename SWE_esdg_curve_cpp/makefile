@@ -32,10 +32,13 @@ objects  = $(subst $(srcPath)/,$(objPath)/,$(sources:.cpp=.o))
 
 .PHONY: clean
 
-all: main2d main2d_baseline runner2d
+all: main2d main2d_sbp main2d_baseline runner2d
 
 main2d: $(objects) $(headers) main2d.cpp
 	$(compiler) $(compilerFlags) -o main2d $(flags) $(objects) main2d.cpp -L${OCCA_DIR}/lib $(paths) $(linkerFlags)
+
+main2d_sbp: $(objects) $(headers) main2d_sbp.cpp
+	$(compiler) $(compilerFlags) -o main2d_sbp $(flags) $(objects) main2d_sbp.cpp -L${OCCA_DIR}/lib $(paths) $(linkerFlags)
 
 # main2d_g_vol3: $(objects) $(headers) main2d_g_vol3.cpp
 # 	$(compiler) $(compilerFlags) -o main2d_g_vol3 $(flags) $(objects) main2d_g_vol3.cpp -L${OCCA_DIR}/lib $(paths) $(linkerFlags)
@@ -57,11 +60,11 @@ clean:
 	rm -f runner2d;
 	rm -f main;
 	rm -f main2d;
-# 	rm -f main2d_g_vol3;
+	rm -f main2d_sbp;
 # 	rm -f main2d_group;
 	rm -f main2d_baseline;
 	rm -rf main2d.dSYM/;
-# 	rm -rf main2d_g_vol3.dSYM;
+	rm -rf main2d_sbp.dSYM;
 # 	rm -rf main2d_group.dSYM;
 	rm -rf main2d_baseline.dSYM;
 

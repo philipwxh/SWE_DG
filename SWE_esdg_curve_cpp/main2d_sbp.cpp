@@ -37,7 +37,7 @@ int main( int argc, char **argv ){
   // a: curved warping, a = 0 means not curved
   //    when a is large, there might be distorted curved mesh
   //    always verifiy the mesh!
-  double curve = .0; // curved warping
+  double curve = .1; // curved warping
   
   // if more arguments are provided, set CFL, FinalTime and a to user defined values.
   if ( argc > 4 ){
@@ -122,6 +122,7 @@ int main( int argc, char **argv ){
   MatrixXi mapPq;
   // Build mapPq to store the connection between face nodes
   BuildFaceNodeMaps( mesh, xf, yf, zf, mapPq );
+    // cout << "mapPq block: row: " << mapPq.rows() << " . col: "<< mapPq.cols() << ". " << endl << mapPq << endl << endl;
 
   // builds periodicity into the node maps
   double DX = mesh->VX.maxCoeff() - mesh->VX.minCoeff();
@@ -129,23 +130,7 @@ int main( int argc, char **argv ){
   // create the periodic boundary condition for 2D map
   // and store the face nodes connections for the boundary nodes
   MakeNodeMapsPeriodic2d( mesh, xf, yf, DX, DY, mapPq );
-
-  // correct mapPq for Nfields > 1  
-  MatrixXi mapPqNfields( NfqNfaces, K );
-  // loop over all face nodes in all elements
-  
-  for( int i = 0; i < NfqNfaces * K; ++i ){
-    int idP = mapPq( i );
-    // e: element of the neighbor node
-    int e = idP / NfqNfaces;
-    // fidP: index of the neighbor node in its element
-    int fidP = idP % NfqNfaces;
-    // store the first index of the variable 
-    mapPqNfields( i ) = fidP + e * NfqNfaces * ( Nfields + 1 );
-  }  
-  mesh->mapPq = mapPqNfields;
-
-  cout << "mapPq built"<< endl;
+  // cout << "mapPq block: row: " << mapPq.rows() << " . col: "<< mapPq.cols() << ". " << endl << mapPq << endl << endl;
 
   // =================== set initial condition
 
@@ -160,19 +145,24 @@ int main( int argc, char **argv ){
   // v:   SWE wariable velocity in y direction
   // btm: SWE bottom geomtry
   MatrixXd h, u, v, btm;  
+
+  // Vq: interpolate polynomial cofficient to volume quadrature points
+  MatrixXd Vq = mesh->Vq;
+
   double time = 0.0;
   // g: gravitational constant for SWE
   //    might not be 9.8
   //    when g is negative, SWESOLUTION should initialize it problem specific value
   dfloat g = -1.0;
   // compute the initial condition  
-  SWESOLUTION( x, y, time, g, h, u, v, btm );
+  SWESOLUTION( Vq * x, Vq * y, time, g, h, u, v, btm );
+  // cout << "h block: row: " << h.rows() << " . col: "<< h.cols() << ". " << endl << h << endl << endl;
   // hu: h * u
   MatrixXd hu = h.array() * u.array();
   // hv: h * v
   MatrixXd hv = h.array() * v.array();
   // stack all variable in to one matrix Q
-  MatrixXd Q( ( Nfields + 1 ) * Np, K );
+  MatrixXd Q( ( Nfields + 1 ) * Nq, K );
   Q << h, hu, hv, btm;
 
   // ========================== set up OCCA application
@@ -201,6 +191,7 @@ int main( int argc, char **argv ){
   // p_T: max of total face quadrature points and dimension
   app->props[ "defines/p_T" ] = max( NfqNfaces, mesh->Np );
   
+  cout << "Np = " << mesh->Np << "; Nq = " << Nq << ";NfqNfaces = " << NfqNfaces << "; NqT = " << NqT << endl;
   // number of geometric terms
   // Nvgeo: rxJ, ryJ, sxJ, syJ, J
   int Nvgeo = 5; 
@@ -209,7 +200,7 @@ int main( int argc, char **argv ){
   app->props[ "defines/p_Nvgeo" ] = Nvgeo;
   app->props[ "defines/p_Nfgeo" ] = Nfgeo;
 
-  int KblkP = 4; int KblkV = 4; int KblkS = 4; int KblkU = 4;
+  int KblkP = 1; int KblkV = 1; int KblkS = 1; int KblkU = 1;
   // number of elements in one group for project kernel
   app->props[ "defines/p_KblkP" ] = KblkP;
   // number of elements in one group for volume kernel
@@ -250,37 +241,24 @@ occa::memory o_rhsv_DEBUG, o_rt;
 #endif
 
   // build occa kernels  
-  string path = "okl/SWE2DCurve.okl";
+  string path = "okl/SWE2DCurve_sbp.okl";
   // volume  : Calculate the volume contribution for SWE
   // surface : Calculate the surface flux contribution for SWE
   // update  : Multiple right hand side by Mass matrix inverse and perform RK4 over time
   // project : Calculate the entropy projection for SWE
   //testing
-  occa::kernel volume1, volume2, volume3, surface, update, project, rhstest;
-  volume1 = app->device.buildKernel( path.c_str(), "volume1", app->props );
-  volume2 = app->device.buildKernel( path.c_str(), "volume2", app->props );
-  volume3 = app->device.buildKernel( path.c_str(), "volume3", app->props );
+  occa::kernel volume, surface, update, rhstest;
+  volume = app->device.buildKernel( path.c_str(), "volume", app->props );
   surface = app->device.buildKernel( path.c_str(), "surface", app->props );
   update  = app->device.buildKernel( path.c_str(), "update" , app->props );
-  project = app->device.buildKernel( path.c_str(), "project", app->props );
 #if DEBUG
   rhstest = app->device.buildKernel( path.c_str(), "rhstest", app->props );
 #endif
   
-  // ================= set node maps + boundary condition
-  
-  
-  //bcFlag: Boundary condition flag. 0 for periodic boundary condition
-  MatrixXi bcFlag( xf.rows(), xf.cols() );  
-  bcFlag.fill( 0 ); // no BCs
-
-  occa::memory o_bcFlag, o_mapPq;
-  setOccaIntArray( app, bcFlag, o_bcFlag );
-  setOccaIntArray( app, mesh->mapPq, o_mapPq );  
 
   // ================= construct discretization matrices
   // Vq: interpolate polynomial cofficient to volume quadrature points
-  MatrixXd Vq = mesh->Vq;
+  // MatrixXd Vq = mesh->Vq;
   // cout << "Vq block: row: " << Vq.rows() << " . col: "<< Vq.cols() << ". " << endl << Vq << endl << endl;
   // Vf: interpolate polynomial cofficient to face quadrature points
   MatrixXd Vf = mesh->Vf;
@@ -330,23 +308,100 @@ occa::memory o_rhsv_DEBUG, o_rt;
   // MatrixXd VNP = VN * Pq;
   // PN: not used in curved meshes since mass matrix is different for each element
   // MatrixXd PN = mldivide( M, VNT ); 
+
+  cout << "to compute sbp operators" <<endl;
+  MatrixXd E_sbp = MatrixXd::Zero( mesh->rf.size(), mesh->rq.size() );
+  MatrixXi E_sbpi = MatrixXi::Zero( mesh->rf.size(), mesh->rf.size() );
+
+  MatrixXi E_sbp_idx( mesh->rf.size(), 1 );
+  // cout << "mesh->rq block: row: " << mesh->rq.rows() << " . col: "<< mesh->rq.cols() << ". " << endl << mesh->rq << endl << endl;
+  //   cout << "mesh->rf block: row: " << mesh->rf.rows() << " . col: "<< mesh->rf.cols() << ". " << endl << mesh->rf << endl << endl;
+
+  // cout << "mesh->sq block: row: " << mesh->sq.rows() << " . col: "<< mesh->sq.cols() << ". " << endl << mesh->sq << endl << endl;
+  //   cout << "mesh->sf block: row: " << mesh->sf.rows() << " . col: "<< mesh->sf.cols() << ". " << endl << mesh->sf << endl << endl;
+
+
+  for( int i = 0; i < mesh->rf.size(); ++i ){
+    for( int j = 0; j < mesh->rq.size(); ++j){
+      if( abs( mesh->rq( j ) - mesh->rf( i ) ) + 
+          abs( mesh->sq( j ) - mesh->sf( i ) ) < 1e-10 ){
+        E_sbp( i, j ) = 1;
+        E_sbpi( i, j ) = 1;
+        E_sbp_idx( i, 0 ) = j;
+      }
+    }
+  }
+  // cout << "E_sbp block: row: " << E_sbp.rows() << " . col: "<< E_sbp.cols() << ". " << endl << E_sbp << endl << endl;
+  // cout << "E_sbp_idx block: row: " << E_sbp_idx.rows() << " . col: "<< E_sbp_idx.cols() << ". " << endl << E_sbp_idx << endl << endl;
+  MatrixXd VN_sbp( mesh->rf.size() + mesh->rq.size(), mesh->rq.size() );
+  VN_sbp.topLeftCorner( mesh->rq.size(), mesh->rq.size() )  = MatrixXd::Identity( mesh->rq.size(), mesh->rq.size() );
+  VN_sbp.bottomLeftCorner( mesh->rf.size(), mesh->rq.size() )  = E_sbp;
+
+  MatrixXd QNr_sbp = VN_sbp.transpose() * QNr * VN_sbp;
+  MatrixXd QNs_sbp = VN_sbp.transpose() * QNs * VN_sbp;
+  MatrixXd Pf = E_sbp.transpose() * mesh->wf.asDiagonal();
+
+
+ // ================= set node maps + boundary condition
+  
+  
+  //bcFlag: Boundary condition flag. 0 for periodic boundary condition
+  MatrixXi bcFlag( xf.rows(), xf.cols() );  
+  bcFlag.fill( 0 ); // no BCs
+
+  occa::memory o_bcFlag, o_mapPq, o_E_sbp_idx;
+  setOccaIntArray( app, bcFlag, o_bcFlag );
+
+  MatrixXi fnodes_idx = mapPq;
+
+  for( int i = 0; i < NfqNfaces * K; ++i ){
+    fnodes_idx( i ) = i;
+  }
+
+  MatrixXi fnodes_idx_sbp = E_sbpi * fnodes_idx;
+  MatrixXi mapPq_sbp = fnodes_idx_sbp;
+
+  for( int i = 0; i < NfqNfaces * K; ++i ){
+    mapPq_sbp( i ) = fnodes_idx_sbp( mapPq( i ) ) ;
+  }
+ 
+  mapPq = mapPq_sbp;
+
+  // correct mapPq for Nfields > 1  
+  MatrixXi mapPqNfields( NfqNfaces, K );
+  // loop over all face nodes in all elements
+  
+  for( int i = 0; i < NfqNfaces * K; ++i ){
+    int idP = mapPq( i );
+    // e: element of the neighbor node
+    int e = idP / NfqNfaces;
+    // fidP: index of the neighbor node in its element
+    int fidP = idP % NfqNfaces;
+    // store the first index of the variable 
+    mapPqNfields( i ) = fidP + e * Nq * ( Nfields + 1 );
+  }  
+  mesh->mapPq = mapPqNfields;
+  // cout << "mapPqNfields block: row: " << mapPqNfields.rows() << " . col: "<< mapPqNfields.cols() << ". " << endl << mapPqNfields << endl << endl;
+  setOccaIntArray( app, mesh->mapPq, o_mapPq );  
+
+  cout << "mapPq built"<< endl;
   
   // print statement left here for furture debugging purpose
   // can be used to print the above matrices for correctness checking
-  // cout << "VN block: row: " << VN.rows() << " . col: "<< VN.cols() << ". " << endl << VN << endl << endl;
+  // cout << "Pf block: row: " << Pf.rows() << " . col: "<< Pf.cols() << ". " << endl << Pf << endl << endl;
 
   // calculate interpolated geometric cofficients
   MatrixXd JJ   = Vq * mesh->J;
-  MatrixXd rxJJ = VN * ( mesh->rxJ );
-  MatrixXd ryJJ = VN * ( mesh->ryJ );
-  MatrixXd sxJJ = VN * ( mesh->sxJ );
-  MatrixXd syJJ = VN * ( mesh->syJ );
+  MatrixXd rxJJ = Vq * ( mesh->rxJ );
+  MatrixXd ryJJ = Vq * ( mesh->ryJ );
+  MatrixXd sxJJ = Vq * ( mesh->sxJ );
+  MatrixXd syJJ = Vq * ( mesh->syJ );
   MatrixXd WqJJ = mesh->wq.asDiagonal() * JJ;
 
   // M_inv: stores the mass matrix inverse for all elements.
   //        To get the mass matrix for the e th element:
   //        M_inv.middleRows( e * Np, Np )
-  MatrixXd M_inv( K * Np, Np );
+  MatrixXd M_inv( K * Nq, Nq );
   // QNx:   stores the QNx for all elements
   //        To get the QNx for the e th element:
   //        QNx.middleRows( e * NqT, NqT )
@@ -356,34 +411,34 @@ occa::memory o_rhsv_DEBUG, o_rt;
   //        QNy.middleRows( e * NqT, NqT )
   // MatrixXd QNy( K * NqT, NqT  );
   // BTMq:  Bottom gemetry interpolated to quadrature points
-  MatrixXd BTMq = VN * btm;
+  MatrixXd BTMq = btm;
   // BTMx:  Stores interoplated bottom geometry derivatives in x direction
   //        To get the BTMx for the e th element:
   //        BTMx.middleCols( e, 1 )
-  MatrixXd gBTMx( NqT, K  );
+  MatrixXd gBTMx( Nq, K  );
   // BTMy:  Stores interoplated bottom geometry derivatives in y direction
   //        To get the BTMx for the e th element:
   //        BTMy.middleCols( e, 1 )
-  MatrixXd gBTMy( NqT, K  );
+  MatrixXd gBTMy( Nq, K  );
 
   // Building elementwise Mass matrices inverses and BTMx and BTMy
   for( int e = 0; e < K; ++e ){
       // get information for element e
       // MatrixXd JJi = JJ.col( e ).asDiagonal();
       // MatrixXd WqJJi = mesh->wq.asDiagonal() * JJi;
-      MatrixXd WqJJi = WqJJ.col( e ).asDiagonal();
+      MatrixXd M_e = WqJJ.col( e ).asDiagonal();
       MatrixXd rxJJi = rxJJ.col( e ).asDiagonal();
       MatrixXd ryJJi = ryJJ.col( e ).asDiagonal();
       MatrixXd sxJJi = sxJJ.col( e ).asDiagonal();
       MatrixXd syJJi = syJJ.col( e ).asDiagonal();
 
       // build mass matrix, QNx and QNy for element e
-      MatrixXd M_e = Vq.transpose() * WqJJi * Vq;
-      MatrixXd QNx_e = 0.5 * ( rxJJi * QNr + QNr * rxJJi + sxJJi * QNs + QNs * sxJJi );
-      MatrixXd QNy_e = 0.5 * ( ryJJi * QNr + QNr * ryJJi + syJJi * QNs + QNs * syJJi );
+      // MatrixXd M_e = WqJJi.array().;
+      MatrixXd QNx_e = 0.5 * ( rxJJi * QNr_sbp + QNr_sbp * rxJJi + sxJJi * QNs_sbp + QNs_sbp * sxJJi );
+      MatrixXd QNy_e = 0.5 * ( ryJJi * QNr_sbp + QNr_sbp * ryJJi + syJJi * QNs_sbp + QNs_sbp * syJJi );
       
       // stack information to larger matrices
-      M_inv.middleRows( e * Np, Np ) = M_e.inverse();
+      M_inv.middleRows( e * Nq, Nq ) = M_e.inverse();
       gBTMx.middleCols( e, 1 )  = g * QNx_e * BTMq.col( e );
       gBTMy.middleCols( e, 1 )  = g * QNy_e * BTMq.col( e );
       // QNx.middleRows( e * NqT, NqT  ) = QNx_e;
@@ -394,13 +449,11 @@ occa::memory o_rhsv_DEBUG, o_rt;
   // cout << "M_inv block: row: " << M_inv.rows() << " . col: "<< M_inv.cols() << ". " << endl << M_inv << endl << endl;
   // cout << "BTMx block: row: " << BTMx.rows() << " . col: "<< BTMx.cols() << ". " << endl << BTMx << endl << endl;
 
-  QNr = .5 * ( QNr - QNr.transpose() );
-  QNs = .5 * ( QNs - QNs.transpose() );
-  // cout << "QNr block: row: " << QNr.rows() << " . col: "<< QNr.cols() << ". " << endl << QNr << endl << endl;
+  QNr_sbp = .5 * ( QNr_sbp - QNr_sbp.transpose() );
+  QNs_sbp = .5 * ( QNs_sbp - QNs_sbp.transpose() );
+  // cout << "QNr_sbp block: row: " << QNr_sbp.rows() << " . col: "<< QNr_sbp.cols() << ". " << endl << QNr_sbp << endl << endl;
   // cout << "QNs block: row: " << QNs.rows() << " . col: "<< QNs.cols() << ". " << endl << QNs << endl << endl;
-
-
-
+  
   // solution:
   // o_Q:  contains h, hu, hv at mesh points
   // o_Qv: contains h, hu, hv interpolated to volume quadrature points
@@ -427,34 +480,35 @@ occa::memory o_rhsv_DEBUG, o_rt;
 
   // calculated right hand side timestep stuff
   occa::memory o_rhs, o_res, o_rhsv;
-  setOccaArray( app, MatrixXd::Zero( Np * Nfields, K ), o_rhs );
-  setOccaArray( app, MatrixXd::Zero( Np * Nfields, K ), o_res );  
-  setOccaArray( app, MatrixXd::Zero( NqT * Nfields, K ), o_rhsv ); 
+  setOccaArray( app, MatrixXd::Zero( Nq * Nfields, K ), o_rhs );
+  setOccaArray( app, MatrixXd::Zero( Nq * Nfields, K ), o_res );  
+  setOccaArray( app, MatrixXd::Zero( Nq * Nfields, K ), o_rhsv ); 
 
   // occa operators
-  occa::memory o_M_inv, o_wq, o_QNr, o_QNs, o_VfTWf, o_Vq, o_VN; 
+  occa::memory o_M_inv, o_wq, o_QNr, o_QNs, o_Pf, o_Vq, o_VN; 
   // operators not used to curved mesh:
   // occa::memory o_Lf, o_PN, o_VNP
   occa::memory o_gBTx, o_gBTy; // precomputed data
 
   // set solution arrays
   setOccaArray( app, Q, o_Q );
-  MatrixXd Qv( ( Nfields + 1 ) * Nq, K );
-  Qv << Vq * h, Vq * hu, Vq * hv, Vq * btm;
-  setOccaArray( app, Qv, o_Qv );
-  // cout << "Qv block: row: " << Qv.rows() << " . col: "<< Qv.cols() << ". " << endl << Qv << endl << endl;
-  MatrixXd Qf( ( Nfields + 1 ) * NfqNfaces, K );
-  Qf << Vf * h, Vf * hu, Vf * hv, Vf * btm;
-  setOccaArray( app, Qf, o_Qf );
+  // MatrixXd Qv( ( Nfields + 1 ) * Nq, K );
+  // Qv << Vq * h, Vq * hu, Vq * hv, Vq * btm;
+  // setOccaArray( app, Qv, o_Qv );
+  // // cout << "Qv block: row: " << Qv.rows() << " . col: "<< Qv.cols() << ". " << endl << Qv << endl << endl;
+  // MatrixXd Qf( ( Nfields + 1 ) * NfqNfaces, K );
+  // Qf << Vf * h, Vf * hu, Vf * hv, Vf * btm;
+  // setOccaArray( app, Qf, o_Qf );
   // cout << "Qf block: row: " << Qf.rows() << " . col: "<< Qf.cols() << ". " << endl << Qf << endl << endl;
 
   // set operators
   setOccaArray( app, M_inv, o_M_inv );
   setOccaArray( app, mesh->wq, o_wq );
+  setOccaIntArray( app, E_sbp_idx, o_E_sbp_idx );
   // setOccaArray( app, Vq, o_Vq );
-  setOccaArray( app, QNr, o_QNr );
-  setOccaArray( app, QNs, o_QNs );
-  setOccaArray( app, VfTWf, o_VfTWf );
+  setOccaArray( app, QNr_sbp, o_QNr );
+  setOccaArray( app, QNs_sbp, o_QNs );
+  setOccaArray( app, Pf, o_Pf );
   setOccaArray( app, VN, o_VN );
   setOccaArray( app, gBTMx, o_gBTx );
   setOccaArray( app, gBTMy, o_gBTy );
@@ -500,7 +554,7 @@ occa::memory o_rhsv_DEBUG, o_rt;
       const dfloat fb  = ( dfloat ) mesh->rk4b[ INTRK ];
       // cout << "Qv block: row: " << Qv.rows() << " . col: "<< Qv.cols() << ". " << endl << Qv << endl << endl;
       // entropy projection
-      project( K, o_M_inv, o_VN, o_WqJJ, o_Qv, o_Qf, o_rhsv_DEBUG );
+      // project( K, o_M_inv, o_VN, o_WqJJ, o_Qv, o_Qf, o_rhsv_DEBUG );
 
       // getOccaArray( app, o_rhsv_DEBUG, rhsv_DEBUG );
       // cout << "rhsv_DEBUG block: row: " << rhsv_DEBUG.rows() << " . col: "<< rhsv_DEBUG.cols() << ". " << endl << rhsv_DEBUG << endl << endl;
@@ -512,35 +566,26 @@ occa::memory o_rhsv_DEBUG, o_rt;
       // return 0;
 
       // compute the volume term with computing device
-      volume1( K, o_rxJJ, o_ryJJ, o_sxJJ, o_syJJ, o_gBTx, o_gBTy,
-                  o_QNr, o_QNs, o_Qv, o_Qf, o_rhsv );
-      // MatrixXd rhsv( NqT * Nfields, K );
+      volume( K, o_rxJJ, o_ryJJ, o_sxJJ, o_syJJ,  o_gBTx, o_gBTy, o_QNr, o_QNs, o_Q, o_rhsv );
+
+      // MatrixXd rhsv( Nq * Nfields, K );
       // getOccaArray( app, o_rhsv, rhsv );
       // cout << "rhsv block: row: " << rhsv.rows() << " . col: "<< rhsv.cols() << ". " << endl << rhsv << endl << endl;
-
-      volume2( K, o_rxJJ, o_ryJJ, o_sxJJ, o_syJJ,
-                  o_QNr, o_QNs, o_Qv, o_Qf, o_rhsv );
-      // getOccaArray( app, o_rhsv, rhsv );
-      // cout << "rhsv block: row: " << rhsv.rows() << " . col: "<< rhsv.cols() << ". " << endl << rhsv << endl << endl;
-
-      volume3( K, o_VN, o_rhsv, o_rhs );
-
-      // MatrixXd rhs( Np * Nfields, K );
-      // getOccaArray( app, o_rhs, rhs );
-      // cout << "rhs block: row: " << rhs.rows() << " . col: "<< rhs.cols() << ". " << endl << rhs << endl << endl;
-      // if (INTRK == 1)
       // return 0;
-
+      // cout << "volume done"<<endl;
       // compute the suface term with computing device
-      surface( K, o_fgeo, o_mapPq, o_bcFlag, o_VfTWf, o_Qf, o_rhs ); 
+      // getOccaArray( app, o_Q, Q );
+      // cout << "Q block: row: " << Q.rows() << " . col: "<< Q.cols() << ". " << endl << Q << endl << endl;
+      surface( K, o_E_sbp_idx, o_fgeo, o_mapPq, o_bcFlag, o_Pf, o_Q, o_rhsv ); 
+      // cout << "surface done"<<endl;
 
-      // MatrixXd rhs( Np * Nfields, K );
-      // getOccaArray( app, o_rhs, rhs );
-      // cout << "rhs block: row: " << rhs.rows() << " . col: "<< rhs.cols() << ". " << endl << rhs << endl << endl;
+      // MatrixXd rhsv( Nq * Nfields, K );
+      // getOccaArray( app, o_rhsv, rhsv );
+      // cout << "rhsv block: row: " << rhsv.rows() << " . col: "<< rhsv.cols() << ". " << endl << rhsv << endl << endl;
       // return 0;
 
       // combine the surface and volume to update the right hand side of the equation
-      update( K, fa, fb, fdt, o_M_inv, o_VN, o_Q, o_Qv, o_rhs, o_res );
+      update( K, fa, fb, fdt, o_M_inv, o_Q, o_rhsv, o_res );
       // MatrixXd rhs( Np * Nfields, K );
       // getOccaArray( app, o_rhs, rhs );
       // cout << "rhs block: row: " << rhs.rows() << " . col: "<< rhs.cols() << ". " << endl << rhs << endl << endl;
@@ -572,7 +617,7 @@ occa::memory o_rhsv_DEBUG, o_rt;
   // calculate the time for Linf and L2 error
   clock_t time_error = clock();
   double Linf_err, L2_err;
-  SWE_sol_err( N, K1D, g, FinalTime, mesh, Q, btm, &SWESOLUTION, Linf_err, L2_err );
+  SWE_sol_err_sbp( N, K1D, g, FinalTime, mesh, Q, btm, &SWESOLUTION, Linf_err, L2_err );
   time_error = clock() - time_error;
   clock_t time_total = time_setup + time_iteration + time_error;
   cout << "Time for the Linf and L2 error calculation is " << (float) time_error / CLOCKS_PER_SEC;

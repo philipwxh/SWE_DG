@@ -1,5 +1,6 @@
 #include "fem.h"
 #include "BookCodes.h"
+#include "Quadrature_rules.hpp"
 
 // make quads 
 void InitRefTri(Mesh *mesh, int N){
@@ -23,7 +24,8 @@ void InitRefTri(Mesh *mesh, int N){
 
   VectorXd rq,sq,wq;
   // exact for 2*N polynoms
-  tri_cubature(2*N,rq,sq,wq);
+  // tri_cubature(2*N,rq,sq,wq);
+  tri_Kubatko2D(N,rq,sq,wq);
   
   // face quad points
   VectorXd e(rq1D.size()); e.fill(1.0);

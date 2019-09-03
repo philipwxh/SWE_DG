@@ -1,3 +1,4 @@
+
 #ifndef _SWE_TEST_CASE_HEADER
 #define _SWE_TEST_CASE_HEADER
 
@@ -17,4 +18,7 @@ void SWE_sol_err( int N, int K1D, double g, double FinalTime, Mesh *mesh, Matrix
   void ( *SWE_solution )( MatrixXd, MatrixXd, double, double &, MatrixXd &, MatrixXd &, MatrixXd &, MatrixXd &),
                    double &Linf_err, double &L2_err );
 
+void SWE_sol_err_sbp( int N, int K1D, double g, double FinalTime, Mesh *mesh, MatrixXd &Q, MatrixXd &btm, 
+  void ( *SWE_solution )( MatrixXd, MatrixXd, double, double &, MatrixXd &, MatrixXd &, MatrixXd &, MatrixXd &),
+                   double &Linf_err, double &L2_err );
 #endif
