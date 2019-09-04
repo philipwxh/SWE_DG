@@ -37,7 +37,7 @@ int main( int argc, char **argv ){
   // a: curved warping, a = 0 means not curved
   //    when a is large, there might be distorted curved mesh
   //    always verifiy the mesh!
-  double curve = .1; // curved warping
+  double curve = .2; // curved warping
   
   // if more arguments are provided, set CFL, FinalTime and a to user defined values.
   if ( argc > 4 ){
@@ -68,7 +68,7 @@ int main( int argc, char **argv ){
   printf( "N = %d, K = %d\n", N, mesh->K );
   
   // initialize reference triangle element
-  InitRefTri( mesh, N );
+  InitRefTri_sbp( mesh, N );
 
   // make physical nodes
   // low order mapping
@@ -165,6 +165,7 @@ int main( int argc, char **argv ){
   MatrixXd Q( ( Nfields + 1 ) * Nq, K );
   Q << h, hu, hv, btm;
 
+
   // ========================== set up OCCA application
 
   // create an App object to setup OCCA
@@ -225,19 +226,14 @@ int main( int argc, char **argv ){
     app->props[ "defines/p_g_half" ]   = ( double ) 0.5 * g;
   }
 
-occa::memory o_rhsv_DEBUG, o_rt;
 #if DEBUG
+  occa::memory o_rt;
   // for right hand side test only
-  MatrixXd rhsv_DEBUG( Nfields * Np, K );
-  rhsv_DEBUG.fill( 0.0 );
-  setOccaArray( app, rhsv_DEBUG, o_rhsv_DEBUG );
   MatrixXd rt( K, 1 );
   rt.fill( 0.0 );
   occa::memory o_rhstest;
   setOccaArray( app, rt, o_rt );
   app->props[ "defines/DEBUG" ] = 1;
-#else
-  setOccaArray( app, MatrixXd::Zero( 1, 1 ), o_rhsv_DEBUG );
 #endif
 
   // build occa kernels  
@@ -582,13 +578,21 @@ occa::memory o_rhsv_DEBUG, o_rt;
       // MatrixXd rhsv( Nq * Nfields, K );
       // getOccaArray( app, o_rhsv, rhsv );
       // cout << "rhsv block: row: " << rhsv.rows() << " . col: "<< rhsv.cols() << ". " << endl << rhsv << endl << endl;
-      // return 0;
+      
+#if DEBUG
+    if( INTRK == 0 ){
+      // right hand side test
+      rhstest( K, o_M_inv, o_WqJJ, o_Q, o_rhsv, o_rt );
+      getOccaArray( app, o_rt, rt );
+      cout << "right hand side test is " << rt.sum() << endl;
+    }
+#endif
 
       // combine the surface and volume to update the right hand side of the equation
       update( K, fa, fb, fdt, o_M_inv, o_Q, o_rhsv, o_res );
       // MatrixXd rhs( Np * Nfields, K );
-      // getOccaArray( app, o_rhs, rhs );
-      // cout << "rhs block: row: " << rhs.rows() << " . col: "<< rhs.cols() << ". " << endl << rhs << endl << endl;
+      // getOccaArray( app, o_rhsv, rhsv );
+      // cout << "rhsv block: row: " << rhsv.rows() << " . col: "<< rhsv.cols() << ". " << endl << rhsv << endl << endl;
 
       // getOccaArray( app, o_Qv, Qv );
       // cout << "Qv block: row: " << Qv.rows() << " . col: " << Qv.cols() << ". " << endl << Qv << endl << endl;
@@ -597,11 +601,12 @@ occa::memory o_rhsv_DEBUG, o_rt;
       // return 0;
       
     }
-#if DEBUG
-    // right hand side test
-    rhstest( K, o_M_inv, o_WqJJ, o_VN, o_rhs, o_rhsv_DEBUG, o_rt );
-    cout << "right hand side test is " << rt.sum() << endl;
-#endif
+// #if DEBUG
+//     // right hand side test
+//     rhstest( K, o_M_inv, o_WqJJ, o_Q, o_rhsv, o_rt );
+//     getOccaArray( app, o_rt, rt );
+//     cout << "right hand side test is " << rt.sum() << endl;
+// #endif
     // cout << "right hand side test is " << rt2.sum() << endl;
     if ( i % interval == 0 ){
       printf( "on timestep %d out of %d\n", i, Nsteps ) ;

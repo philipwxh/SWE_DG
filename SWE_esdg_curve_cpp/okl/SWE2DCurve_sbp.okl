@@ -477,3 +477,79 @@ void SWE2d_Vflux( const dfloat hL, const dfloat hR, const dfloat uL,
 		}// k_e
 	}// k_g
 }
+
+@kernel void rhstest( const int K,
+					  const dfloat * M_inv,
+		    		  const dfloat * WqJJ,   
+		    		  const dfloat * Q,
+		    		  const dfloat * rhsv,
+		    		        dfloat * rt ){
+	/* inputs:
+	K:     total number of mesh elements
+	M_inv: contains mass matrices inverses for all elements
+	WqJJ:  wq .* (Vq * J ), geometric factors
+	Vq:    volume quadrature interpolation matrix
+	rhsv:  stores the Mk_inv(:,:,e)*(Vq'*(wq.*JJ(:,e).*VV1(:,e))) for all element e
+    rhs:   variable holding computed right hand side information
+    rt:    right hand side test store right-hand-side test result
+	*/
+	for( int e = 0; e < K; ++e; @outer( 0 ) ){
+		// declare shared memory for all nodes in one elements
+		// p_Nq: number of volume quadrature points in one element
+		@shared dfloat s_Q[ p_Nfields ][ p_Nq ];
+		// s_rhsv: rhsv value at quadrature points in one element
+		@shared dfloat s_rhsv[ p_Nfields ][ p_Nq ];
+		// s_WqJJ: stores wq .* (Vq * J ) column e
+		@shared dfloat s_WqJJ[ p_Nq ];
+		// s_val to keep track rhstest value for element e      
+   		@shared dfloat s_val[ p_Nq ];
+   		
+
+		// extract values of conservative vars at quad pts
+		// p_NqT: total number of quadrature points in one element
+		// loop over all quadrature points in one element
+		for( int i = 0; i < p_Nq; ++i; @inner( 0 ) ){
+			// we project the volume quadrature points first
+			// get the index of all fields for that quadrature points
+			int Qid = i + e * p_Nq * ( p_Nfields + 1 );
+			// extract the info from Qv for the fields
+			const dfloat u1 = Q[ Qid ];	Qid += p_Nq;
+			const dfloat u2 = Q[ Qid ]; Qid += p_Nq;
+			const dfloat u3 = Q[ Qid ]; Qid += p_Nq;
+			const dfloat bt = Q[ Qid ];
+			// compute entropy variables at qpts
+			dfloat v1, v2, v3;
+			VU( u1, u2, u3, bt, v1, v2, v3 );
+
+			s_Q[ 0 ][ i ] = v1;
+			s_Q[ 1 ][ i ] = v2;
+			s_Q[ 2 ][ i ] = v3;
+			int Rid = e * p_Nfields * p_Nq;
+			for( int fld = 0; fld < p_Nfields; ++fld ){
+				// load multiple M inverse to rhs
+				dfloat rhsi = ZERO;
+				for( int j = 0; j < p_Nq; j++){
+					const dfloat Mij = M_inv[ i + p_Nq * e + K * p_Nq * j ];
+					rhsi -= Mij * rhsv[ Rid + j ];
+				}
+				s_rhsv[ fld ][ i ] = rhsi;
+				Rid += p_Nq;
+			}
+			s_WqJJ[ i ] = WqJJ[ i + p_Nq * e ];
+		}//inner( 0 )
+		@barrier( "localMemFence" );
+
+		for( int i = 0; i < p_Nq; ++i; @inner( 0 ) ){
+			s_val[ i ] = 0;
+			for( int fld = 0; fld < p_Nfields; ++fld ){
+				s_val[ i ] += s_Q[ fld ][ i ] * s_rhsv[ fld ][ i ] * s_WqJJ[ i ];
+			}
+		}//inner( 0 )
+		@barrier( "localMemFence" );
+		rt[ e ] = 0;
+		for( int i = 0; i < p_Nq; ++i; @inner( 0 ) ){
+			rt[ e ] += s_val[ i ];
+		}
+		@barrier( "localMemFence" );
+	}//outer( 0 )
+}

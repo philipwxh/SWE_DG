@@ -9,8 +9,8 @@
 #include "SWE_fileio.hpp"
 // SWESOLUTION: name of the initial condition to be tested on
 #define SWESOLUTION VortexSWESolution2d
-#define tau 1.0
-#define DEBUG 0
+#define tau 0.0
+#define DEBUG 1
 #define TOL_ZERO 1.e-14
 #define PRINT_ERR 0
 #define CAL_RES 0
@@ -555,6 +555,7 @@ occa::memory o_rhsv_DEBUG, o_rt;
 #if DEBUG
     // right hand side test
     rhstest( K, o_M_inv, o_WqJJ, o_VN, o_rhs, o_rhsv_DEBUG, o_rt );
+    getOccaArray( app, o_rt, rt );
     cout << "right hand side test is " << rt.sum() << endl;
 #endif
     // cout << "right hand side test is " << rt2.sum() << endl;

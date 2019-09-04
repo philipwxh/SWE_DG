@@ -3,7 +3,7 @@
 #include "Quadrature_rules.hpp"
 
 // make quads 
-void InitRefTri(Mesh *mesh, int N){
+void InitRefTri(Mesh *mesh, int N, bool sbp){
 
   int Np = (N+1)*(N+2)/2;
   int Nfp = (N+1);
@@ -24,9 +24,11 @@ void InitRefTri(Mesh *mesh, int N){
 
   VectorXd rq,sq,wq;
   // exact for 2*N polynoms
-  // tri_cubature(2*N,rq,sq,wq);
-  tri_Kubatko2D(N,rq,sq,wq);
-  
+  if( sbp ){
+    tri_Kubatko2D(N,rq,sq,wq);
+  }else{
+    tri_cubature(2*N,rq,sq,wq);
+  }  
   // face quad points
   VectorXd e(rq1D.size()); e.fill(1.0);
   int Nfaces = 3;
@@ -135,6 +137,14 @@ void InitRefTri(Mesh *mesh, int N){
   mesh->rk4c(4) =  2802321613138.0 / 2924317926251.0;
   mesh->rk4c(5) =              1.0;
   
+}
+
+void InitRefTri(Mesh *mesh, int N){
+  InitRefTri( mesh, N, false );
+}
+
+void InitRefTri_sbp(Mesh *mesh, int N){
+  InitRefTri( mesh, N, true );
 }
 
 // make quads 

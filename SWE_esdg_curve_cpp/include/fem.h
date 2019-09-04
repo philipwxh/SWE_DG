@@ -16,7 +16,9 @@ Mesh *ReadGmsh3d(char *filename);
 
 // 2d tri routines
 void TriMesh2d(Mesh *mesh, int Nx, int Ny);
+void InitRefTri(Mesh *mesh, int N, bool sbp);
 void InitRefTri(Mesh *mesh, int N);
+void InitRefTri_sbp(Mesh *mesh, int N);
 void MapTriNodes(Mesh *mesh);
 void ConnectTriElems(Mesh *mesh); // computes EToE, EToF
 
