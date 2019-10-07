@@ -1,0 +1,80 @@
+\documentclass[11pt]{article}
+
+\usepackage{amsthm}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{natbib}
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage{subcaption}
+\usepackage{multirow}
+\usepackage{listings}
+\usepackage{xcolor}
+
+\lstdefinestyle{CStyle} {
+    language=C,
+    frame=single,
+	backgroundcolor = \color{white},
+	basicstyle=\ttfamily,
+	keywordstyle=\color{blue},	
+    commentstyle=\color{red},
+    stringstyle=\color{black},
+    directivestyle=\color{purple},
+    showspaces=false,
+    showstringspaces=false
+}
+
+\title{High order entropy stable discontinuous Galerkin methods for the shallow water equations: triangular meshes and GPU acceleration}
+
+
+\begin{document}
+\maketitle
+
+Abstract
+
+\section{Introduction}
+Shallow water equations (SWE) provides a great model for fuild flows in rivers, lake and near the coastline, where the vertical scales of movement are much smaller then the horizontal ones. The Shallow watrer equations in 2D with a non-constant bathymetry are
+\begin{subequations}
+\numberwithin{equation}{section}
+\label{eq:SWE}
+\begin{align}
+h_t+(hu)_x+(hv)_y=0,         			 \label{eq:SWEa} \\
+(hu)_t+(hu^2+gh^2/2)_x+(huv)_y=-ghb_x,  \label{eq:SWEb} \\ 
+(hv)_t+(huv)_x+(hv^2+gh^2/2)_y=-ghb_x \label{eq:SWEc}
+\end{align}
+The SWE can be written as 
+\begin{align}
+\vec{w}_t+\vec{f}_x+\vec{g}_y=\vec{s},
+\end{align}
+where 
+\begin{align}
+\vec{w}=(h, hu, hv)^T,\\
+\vec{f}=(hu,hu^2+gh^2/2, huv)^T,  \\
+\vec{g}=(hv,huv, hv^2+gh^2/2)^T, \\
+\vec{s}=(0, -ghb_x, ghb_x)^T,  \\
+\end{align}
+The water height is denoted by $h = h(x,y,t)$, which is measured from the bottom. The velocity in $x$ direction is denoted by $u = u(x,y,t)$ and the velocity in $y$ direction is denoted by $v = v(x,y,t)$. The gravitational constant is denoted by $g$. The bathymetry height is denoted by $b=b(x,y)$. The subscripts are $(.)_t$ for time and $(.)_x$ or $(.)_y$  for directional derivatives. We also define the total water hight $H=h+b$. 
+The steady state solution, also known as the "lake at rest" condition:
+\begin{align}
+H=constant,\ u=v=0.
+\end{align}
+is a very important for the SWE. A numerical method that preserve the "lake at rest" steady state is said to be well-balanced.
+
+Since the SWE is non-linear, discontinuous solution may develop even with a smooth initial condition. Therefore, we seek to solve this problem in the weak sense. However the weak solutions are not unique and might not be physically relevant. Therefore, we only want to find the solutions that follows the second law of thermodynamics, which states that the entropy of the physical system will never decrease. In numerical scheme, a suitable strongly convex entropy function can be used to guarantee that a numerical approximation will satisfy the laws fo thermodynamics discretely.\textcolor{red}{[!!!reference!!!]} A numerical method that satisfies the second law of thermodynamics is said to be entropy stable. We are particular interested in the high-order entropy-stable discontinuous Galerkin (DG) methods for solving the SWE problem. Recent works have great results on may aspect of this problem, including the finding of the entropy-stable and well-balanced numerical flux for this problem. \textcolor{red}{[!!!reference!!!]} We also have the high-order entropy stable DG schemes for general purposes using different sets of quadrature rules. 
+
+The aim of this paper is to present and compare two high-order entropy stable discontinuous Galerkin schemes. The frist is a skew-symmetric formulation of SWE with separated volume and surface quadrature nodes. \textcolor{red}{[!!!reference!!!]}The second scheme use kabatko quadrature node with summation-by-part properties.\textcolor{red}{[!!!reference!!!]} We also implemented both schemes on GPUs for computational acceleration. The analysis and optimization of the multi-threading OCCA code will be disccussed. 
+
+We will introduce the DG scheme on the two dimensional shallow water equatoins in Section 2, with proofs of some key properties and comparison between two different quadrature rules. In Section 3, we will show the numerical results to demonstrate our theoretical discoveries. Section 4 will provide our GPU implementation and optimization details of the OCCA code. 
+\end{subequations}
+\section{DG method on the 2D shallow water}
+
+\section{Numerical results}
+
+\section{GPU optimization}
+
+\section{Conclusions}
+
+
+
+
+\end{document}

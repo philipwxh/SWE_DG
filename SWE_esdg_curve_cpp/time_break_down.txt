@@ -1,0 +1,173 @@
+==3710== Profiling application: ./main2d 1 128 0.125000 0.010000 0.125000
+==3710== Profiling result:
+Time(%)      Time     Calls       Avg       Min       Max  Name
+ 22.41%  87.318ms        80  1.0915ms  1.0806ms  1.1435ms  _occa_volume2_0
+ 21.58%  84.093ms        80  1.0512ms  1.0446ms  1.0833ms  _occa_volume1_0
+ 16.28%  63.429ms        80  792.87us  785.21us  819.61us  _occa_project_0
+ 13.92%  54.263ms        80  678.28us  662.07us  740.92us  _occa_surface_0
+ 13.37%  52.109ms        80  651.37us  638.55us  709.50us  _occa_update_0
+  8.82%  34.382ms        80  429.77us  409.66us  504.44us  _occa_volume3_0
+  3.40%  13.239ms        23  575.60us  1.5360us  1.9956ms  [CUDA memcpy HtoD]
+  0.22%  856.95us         1  856.95us  856.95us  856.95us  [CUDA memcpy DtoH]
+==3710== API calls:
+Time(%)      Time     Calls       Avg       Min       Max  Name
+ 62.29%  980.44ms         1  980.44ms  980.44ms  980.44ms  cuCtxCreate
+ 23.64%  372.05ms         1  372.05ms  372.05ms  372.05ms  cuMemcpyDtoH
+ 11.99%  188.71ms         6  31.451ms  614.67us  185.44ms  cuModuleLoad
+  0.79%  12.509ms        23  543.86us  5.2540us  1.9401ms  cuMemcpyHtoD
+  0.77%  12.172ms        23  529.21us  4.2230us  1.8411ms  cuMemFree
+  0.22%  3.4125ms        23  148.37us  6.0840us  305.27us  cuMemAlloc
+  0.20%  3.2240ms       480  6.7160us  4.7060us  41.245us  cuLaunchKernel
+  0.08%  1.3124ms         6  218.74us  165.59us  328.49us  cuModuleUnload
+  0.00%  22.603us        24     941ns     245ns  2.7570us  cuCtxSetCurrent
+  0.00%  12.481us         1  12.481us  12.481us  12.481us  cuStreamCreate
+  0.00%  10.898us         6  1.8160us  1.3750us  3.0500us  cuModuleGetFunction
+  0.00%  4.7910us         3  1.5970us     261ns  3.4510us  cuDeviceGet
+  0.00%  2.2450us         3     748ns     188ns  1.3130us  cuDeviceGetCount
+  0.00%  2.1840us         4     546ns     375ns     731ns  cuDeviceGetAttribute
+  0.00%     939ns         1     939ns     939ns     939ns  cuDeviceComputeCapability
+
+==3745== Profiling application: ./main2d 2 128 0.125000 0.010000 0.125000
+==3745== Profiling result:
+Time(%)      Time     Calls       Avg       Min       Max  Name
+ 19.08%  222.45ms       155  1.4351ms  1.3249ms  1.7119ms  _occa_project_0
+ 18.80%  219.14ms       155  1.4138ms  1.4054ms  1.4572ms  _occa_volume1_0
+ 17.41%  203.00ms       155  1.3097ms  1.2901ms  1.4114ms  _occa_volume2_0
+ 16.11%  187.86ms       155  1.2120ms  1.1739ms  1.3177ms  _occa_update_0
+ 15.88%  185.16ms       155  1.1946ms  1.1818ms  1.2588ms  _occa_surface_0
+ 10.51%  122.47ms       155  790.14us  749.56us  915.10us  _occa_volume3_0
+  2.07%  24.128ms        23  1.0490ms  1.6320us  3.2064ms  [CUDA memcpy HtoD]
+  0.14%  1.6384ms         1  1.6384ms  1.6384ms  1.6384ms  [CUDA memcpy DtoH]
+==3745== API calls:
+Time(%)      Time     Calls       Avg       Min       Max  Name
+ 80.86%  1.13440s         1  1.13440s  1.13440s  1.13440s  cuMemcpyDtoH
+  8.51%  119.42ms         1  119.42ms  119.42ms  119.42ms  cuCtxCreate
+  6.61%  92.727ms         6  15.455ms  606.52us  89.250ms  cuModuleLoad
+  1.68%  23.591ms        23  1.0257ms  5.4600us  3.1857ms  cuMemcpyHtoD
+  1.51%  21.162ms        23  920.10us  4.4410us  3.0215ms  cuMemFree
+  0.46%  6.4559ms       930  6.9410us  4.8210us  62.518us  cuLaunchKernel
+  0.28%  3.8585ms        23  167.76us  5.6490us  300.54us  cuMemAlloc
+  0.08%  1.1685ms         6  194.76us  166.48us  242.09us  cuModuleUnload
+  0.00%  31.967us        24  1.3310us     248ns  4.1460us  cuCtxSetCurrent
+  0.00%  18.111us         3  6.0370us     275ns  17.220us  cuDeviceGetCount
+  0.00%  11.462us         6  1.9100us  1.4380us  3.1850us  cuModuleGetFunction
+  0.00%  10.942us         1  10.942us  10.942us  10.942us  cuStreamCreate
+  0.00%  4.9640us         3  1.6540us     408ns  3.8280us  cuDeviceGet
+  0.00%  1.7290us         4     432ns     289ns     683ns  cuDeviceGetAttribute
+  0.00%     988ns         1     988ns     988ns     988ns  cuDeviceComputeCapability
+
+==3759== Profiling application: ./main2d 3 128 0.125000 0.010000 0.125000
+==3759== Profiling result:
+Time(%)      Time     Calls       Avg       Min       Max  Name
+ 25.30%  964.60ms       260  3.7100ms  3.6466ms  4.0784ms  _occa_project_0
+ 21.54%  821.23ms       260  3.1586ms  3.1418ms  3.2714ms  _occa_volume1_0
+ 17.64%  672.60ms       260  2.5869ms  2.5629ms  2.7439ms  _occa_update_0
+ 15.91%  606.36ms       260  2.3322ms  2.3064ms  2.4352ms  _occa_volume2_0
+ 10.28%  392.06ms       260  1.5079ms  1.4288ms  1.7691ms  _occa_volume3_0
+  8.13%  309.85ms       260  1.1917ms  1.1795ms  1.2664ms  _occa_surface_0
+  1.12%  42.755ms        23  1.8589ms  1.7280us  7.7386ms  [CUDA memcpy HtoD]
+  0.07%  2.7357ms         1  2.7357ms  2.7357ms  2.7357ms  [CUDA memcpy DtoH]
+==3759== API calls:
+Time(%)      Time     Calls       Avg       Min       Max  Name
+ 62.06%  2.49367s         1  2.49367s  2.49367s  2.49367s  cuMemcpyDtoH
+ 31.67%  1.27280s      1560  815.90us  4.9340us  3.6727ms  cuLaunchKernel
+  2.86%  114.79ms         1  114.79ms  114.79ms  114.79ms  cuCtxCreate
+  1.33%  53.444ms         6  8.9073ms  612.86us  50.132ms  cuModuleLoad
+  1.05%  42.170ms        23  1.8335ms  6.6340us  7.8280ms  cuMemcpyHtoD
+  0.89%  35.803ms        23  1.5566ms  3.8690us  6.7129ms  cuMemFree
+  0.11%  4.4499ms        23  193.47us  3.8980us  333.87us  cuMemAlloc
+  0.03%  1.2755ms         6  212.59us  172.82us  245.88us  cuModuleUnload
+  0.00%  39.200us        24  1.6330us     327ns  3.7730us  cuCtxSetCurrent
+  0.00%  10.981us         1  10.981us  10.981us  10.981us  cuStreamCreate
+  0.00%  9.3010us         6  1.5500us  1.2100us  2.2080us  cuModuleGetFunction
+  0.00%  3.6120us         3  1.2040us     282ns  2.6280us  cuDeviceGet
+  0.00%  2.1070us         3     702ns     196ns  1.4040us  cuDeviceGetCount
+  0.00%  1.2680us         4     317ns     237ns     477ns  cuDeviceGetAttribute
+  0.00%     852ns         1     852ns     852ns     852ns  cuDeviceComputeCapability
+
+==3786== Profiling application: ./main2d 4 128 0.125000 0.010000 0.125000
+==3786== Profiling result:
+Time(%)      Time     Calls       Avg       Min       Max  Name
+ 32.47%  3.05978s       385  7.9475ms  7.9250ms  8.0627ms  _occa_project_0
+ 23.14%  2.18034s       385  5.6632ms  5.6435ms  5.7954ms  _occa_volume1_0
+ 18.13%  1.70868s       385  4.4381ms  4.2366ms  4.9191ms  _occa_update_0
+ 12.65%  1.19173s       385  3.0954ms  3.0523ms  3.3145ms  _occa_volume2_0
+  7.11%  670.28ms       385  1.7410ms  1.6829ms  2.1096ms  _occa_volume3_0
+  5.78%  545.11ms       385  1.4159ms  1.4057ms  1.5241ms  _occa_surface_0
+  0.67%  63.018ms        23  2.7399ms  1.9200us  17.242ms  [CUDA memcpy HtoD]
+  0.04%  4.1099ms         1  4.1099ms  4.1099ms  4.1099ms  [CUDA memcpy DtoH]
+==3786== API calls:
+Time(%)      Time     Calls       Avg       Min       Max  Name
+ 52.68%  5.16578s      2310  2.2363ms  4.9470us  7.9607ms  cuLaunchKernel
+ 42.71%  4.18785s         1  4.18785s  4.18785s  4.18785s  cuMemcpyDtoH
+  2.22%  217.72ms         6  36.286ms  647.36us  214.01ms  cuModuleLoad
+  1.14%  111.35ms         1  111.35ms  111.35ms  111.35ms  cuCtxCreate
+  0.64%  62.831ms        23  2.7318ms  5.5860us  17.273ms  cuMemcpyHtoD
+  0.54%  52.872ms        23  2.2988ms  4.3830us  14.967ms  cuMemFree
+  0.05%  5.1266ms        23  222.90us  6.9120us  392.17us  cuMemAlloc
+  0.02%  1.5129ms         6  252.15us  183.96us  292.19us  cuModuleUnload
+  0.00%  45.831us        24  1.9090us     241ns  4.5120us  cuCtxSetCurrent
+  0.00%  12.013us         1  12.013us  12.013us  12.013us  cuStreamCreate
+  0.00%  10.684us         6  1.7800us  1.5670us  2.0150us  cuModuleGetFunction
+  0.00%  3.8320us         3  1.2770us     356ns  2.7920us  cuDeviceGet
+  0.00%  1.8640us         3     621ns     191ns  1.2060us  cuDeviceGetCount
+  0.00%  1.6050us         4     401ns     262ns     613ns  cuDeviceGetAttribute
+  0.00%     989ns         1     989ns     989ns     989ns  cuDeviceComputeCapability
+
+==3875== Profiling application: ./main2d 5 128 0.125000 0.010000 0.125000
+==3875== Profiling result:
+Time(%)      Time     Calls       Avg       Min       Max  Name
+ 38.04%  11.0002s       540  20.371ms  20.327ms  20.613ms  _occa_project_0
+ 23.70%  6.85556s       540  12.695ms  12.646ms  13.090ms  _occa_volume1_0
+ 16.88%  4.88117s       540  9.0392ms  8.9887ms  9.4193ms  _occa_update_0
+ 11.30%  3.26920s       540  6.0541ms  5.9495ms  6.6091ms  _occa_volume2_0
+  6.02%  1.74054s       540  3.2232ms  3.0698ms  4.2738ms  _occa_volume3_0
+  3.71%  1.07219s       540  1.9855ms  1.9761ms  2.1097ms  _occa_surface_0
+  0.33%  95.739ms        23  4.1626ms  2.0480us  32.717ms  [CUDA memcpy HtoD]
+  0.02%  5.8391ms         1  5.8391ms  5.8391ms  5.8391ms  [CUDA memcpy DtoH]
+==3875== API calls:
+Time(%)      Time     Calls       Avg       Min       Max  Name
+ 67.24%  19.6056s      3240  6.0511ms  4.6210us  20.497ms  cuLaunchKernel
+ 31.55%  9.19946s         1  9.19946s  9.19946s  9.19946s  cuMemcpyDtoH
+  0.37%  108.15ms         1  108.15ms  108.15ms  108.15ms  cuCtxCreate
+  0.33%  95.809ms        23  4.1656ms  6.7050us  32.786ms  cuMemcpyHtoD
+  0.28%  81.235ms        23  3.5320ms  4.6970us  29.176ms  cuMemFree
+  0.20%  59.555ms         6  9.9259ms  681.96us  56.024ms  cuModuleLoad
+  0.02%  5.3843ms        23  234.10us  5.1990us  540.09us  cuMemAlloc
+  0.00%  1.1748ms         6  195.80us  173.32us  250.69us  cuModuleUnload
+  0.00%  52.286us        24  2.1780us     270ns  4.3850us  cuCtxSetCurrent
+  0.00%  11.481us         1  11.481us  11.481us  11.481us  cuStreamCreate
+  0.00%  9.7120us         6  1.6180us  1.1960us  2.3920us  cuModuleGetFunction
+  0.00%  4.3380us         3  1.4460us     281ns  3.3530us  cuDeviceGet
+  0.00%  2.1630us         3     721ns     199ns  1.4410us  cuDeviceGetCount
+  0.00%  1.4550us         4     363ns     267ns     590ns  cuDeviceGetAttribute
+  0.00%  1.1330us         1  1.1330us  1.1330us  1.1330us  cuDeviceComputeCapability
+
+==3890== Profiling application: ./main2d 6 128 0.125000 0.010000 0.125000
+==3890== Profiling result:
+Time(%)      Time     Calls       Avg       Min       Max  Name
+ 35.17%  22.9915s       720  31.933ms  31.580ms  33.380ms  _occa_project_0
+ 25.52%  16.6819s       720  23.169ms  23.006ms  24.133ms  _occa_volume1_0
+ 16.06%  10.4996s       720  14.583ms  14.485ms  15.255ms  _occa_update_0
+ 11.84%  7.74237s       720  10.753ms  10.512ms  11.549ms  _occa_volume2_0
+  8.15%  5.32658s       720  7.3980ms  6.9474ms  11.082ms  _occa_volume3_0
+  3.02%  1.97467s       720  2.7426ms  2.7258ms  2.9079ms  _occa_surface_0
+  0.22%  146.41ms        23  6.3657ms  2.2400us  60.251ms  [CUDA memcpy HtoD]
+  0.01%  7.7559ms         1  7.7559ms  7.7559ms  7.7559ms  [CUDA memcpy DtoH]
+==3890== API calls:
+Time(%)      Time     Calls       Avg       Min       Max  Name
+ 75.06%  49.3548s      4320  11.425ms  4.8660us  32.205ms  cuLaunchKernel
+ 24.07%  15.8245s         1  15.8245s  15.8245s  15.8245s  cuMemcpyDtoH
+  0.30%  195.10ms         6  32.516ms  647.50us  191.51ms  cuModuleLoad
+  0.22%  146.96ms        23  6.3895ms  8.2160us  60.296ms  cuMemcpyHtoD
+  0.18%  118.74ms        23  5.1626ms  4.9150us  51.815ms  cuMemFree
+  0.16%  107.73ms         1  107.73ms  107.73ms  107.73ms  cuCtxCreate
+  0.01%  6.4381ms        23  279.92us  5.6900us  917.89us  cuMemAlloc
+  0.00%  1.3166ms         6  219.43us  192.24us  276.54us  cuModuleUnload
+  0.00%  90.634us        24  3.7760us     268ns  17.918us  cuCtxSetCurrent
+  0.00%  14.581us         1  14.581us  14.581us  14.581us  cuStreamCreate
+  0.00%  9.3390us         6  1.5560us  1.2110us  2.3030us  cuModuleGetFunction
+  0.00%  4.3400us         3  1.4460us     303ns  3.4100us  cuDeviceGet
+  0.00%  2.2110us         3     737ns     168ns  1.4940us  cuDeviceGetCount
+  0.00%  1.7960us         4     449ns     282ns     607ns  cuDeviceGetAttribute
+  0.00%  1.0890us         1  1.0890us  1.0890us  1.0890us  cuDeviceComputeCapability

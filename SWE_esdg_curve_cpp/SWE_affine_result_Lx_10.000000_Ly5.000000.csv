@@ -1,0 +1,2 @@
+N,K1D,K,CFL,Final Time,Curve cofficient,dt,Nsteps,L2 Error, Linf_err,Setup Time,Iteration Time,L2 Error time,Total Time,Finished Time
+3,8,256,0.125,0.5,0,0.003125,160,0.230973,0.116924,0.01401,0.756285,0.002009,0.772304,Fri Jan  9 19:02:49 1970

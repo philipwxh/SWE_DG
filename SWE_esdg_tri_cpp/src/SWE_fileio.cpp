@@ -2,7 +2,7 @@
 
 void SWE_fileio( double Lx, double Ly, int N, int K1D, int K, int Nsteps, 
      double curve, double CFL, double FinalTime, double dt, double L2_err, double Linf_err, 
-     clock_t time_setup, clock_t time_iteration, clock_t time_error, clock_t time_total ){  
+     clock_t time_setup, clock_t time_iteration, clock_t time_error, clock_t time_total, int opt = 0){  
  // write results to .csv file
 
   string filename;
@@ -12,7 +12,13 @@ void SWE_fileio( double Lx, double Ly, int N, int K1D, int K, int Nsteps,
     filename= "SWE_curve_result_Lx_";
   }
 
-  filename += to_string( Lx ) + "_Ly" + to_string( Ly ) + ".csv";
+  filename += to_string( Lx ) + "_Ly" + to_string( Ly );
+  if( opt == 1 ){
+    filename += "_sbp";
+  }
+
+  filename += ".csv";
+
   ifstream file_test( filename.c_str() );
   ofstream outfile;
   // check if the file already exist
@@ -29,7 +35,7 @@ void SWE_fileio( double Lx, double Ly, int N, int K1D, int K, int Nsteps,
   if( outfile ){
     // if the file does not exist, add a row of column description
     if( !file_exist ){
-      outfile << "N,K1D,K,CFL,Final Time,Curve cofficient,dt,Nsteps,L2 Error, Linf_err";
+      outfile << "N,K1D,K,CFL,Final Time,Curve cofficient,dt,Nsteps,L2 Error, Linf_err,";
       outfile << "Setup Time,Iteration Time,L2 Error time,Total Time,Finished Time\n";
     }
     // write out all the result and parameter

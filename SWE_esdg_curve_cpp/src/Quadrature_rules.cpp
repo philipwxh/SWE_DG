@@ -78,6 +78,10 @@ void tri_Kubatko2D(int N, VectorXd &rfq, VectorXd &sfq, VectorXd &wfq){
 #define loadfq(M)				\
 	rfq(i) = Q_GLegendre_rq_N##M[i]; sfq(i) = Q_GLegendre_sq_N##M[i]; wfq(i) = Q_GLegendre_wq_N##M[i];
 
+// #define loadNfq(M)  Nfq = Q_GLobatto_N##M
+// #define loadfq(M)				\
+// 	rfq(i) = Q_GLobatto_rq_N##M[i]; sfq(i) = Q_GLobatto_sq_N##M[i]; wfq(i) = Q_GLobatto_wq_N##M[i];
+
 	int Nfq;
   	if( N < 0 or N > 6 ){
   		printf( "N is not valid to Kubatko2D\n" );

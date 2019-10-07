@@ -394,21 +394,21 @@ void SWE2d_Vflux( const dfloat hL, const dfloat hR, const dfloat uL,
 	// k_g denoted index of the group
 	// k_e denoted index of element inside a group
     // looping over all the group
-	for( int k_g = 0; k_g < ( K + p_KblkV - 1 ) / p_KblkV; ++k_g; @outer( 0 ) ){
+	for( int k_g = 0; k_g < ( K + p_KblkV1 - 1 ) / p_KblkV1; ++k_g; @outer( 0 ) ){
 		// setting up the shared memories for fast read and write
 		// s_Q: store Q values
-		@shared dfloat s_Q[ p_KblkV ][ p_Nfields ][ p_NqT ];
-		@shared dfloat s_gBTx[ p_KblkV ][ p_NqT ];
-		@shared dfloat s_gBTy[ p_KblkV ][ p_NqT ];
+		@shared dfloat s_Q[ p_KblkV1 ][ p_Nfields ][ p_NqT ];
+		@shared dfloat s_gBTx[ p_KblkV1 ][ p_NqT ];
+		@shared dfloat s_gBTy[ p_KblkV1 ][ p_NqT ];
 
 		// store geometric terms  
-		@shared dfloat s_rxJJ[ p_KblkV ][ p_NqT ]; 
-		@shared dfloat s_ryJJ[ p_KblkV ][ p_NqT ];  
-		@shared dfloat s_sxJJ[ p_KblkV ][ p_NqT ];  
-		@shared dfloat s_syJJ[ p_KblkV ][ p_NqT ];  
+		@shared dfloat s_rxJJ[ p_KblkV1 ][ p_NqT ]; 
+		@shared dfloat s_ryJJ[ p_KblkV1 ][ p_NqT ];  
+		@shared dfloat s_sxJJ[ p_KblkV1 ][ p_NqT ];  
+		@shared dfloat s_syJJ[ p_KblkV1 ][ p_NqT ];  
 		// loop over all the elements in the group
-		const int k_g_e_start = k_g * p_KblkV;
-		for( int k_e = 0; k_e < p_KblkV; ++k_e; @inner( 1 ) ){
+		const int k_g_e_start = k_g * p_KblkV1;
+		for( int k_e = 0; k_e < p_KblkV1; ++k_e; @inner( 1 ) ){
 			const int e = k_g_e_start + k_e;
 			if( e < K ){   
 				// assume these are conservative variables
@@ -440,7 +440,7 @@ void SWE2d_Vflux( const dfloat hL, const dfloat hR, const dfloat uL,
 
 		@barrier( "localMemFence" );  
 
-		for( int k_e = 0; k_e < p_KblkV; ++k_e; @inner( 1 ) ){
+		for( int k_e = 0; k_e < p_KblkV1; ++k_e; @inner( 1 ) ){
 			const int e = k_g_e_start + k_e;
 			if( e < K ){          
 				// apply flux differencing: sum(Q.*F,2) -> s_rhsv (shared memory)
@@ -523,18 +523,18 @@ void SWE2d_Vflux( const dfloat hL, const dfloat hR, const dfloat uL,
 	// k_g denoted index of the group
 	// k_e denoted index of element inside a group
     // looping over all the group
-	for( int k_g = 0; k_g < ( K + p_KblkV - 1 ) / p_KblkV; ++k_g; @outer( 0 ) ){
+	for( int k_g = 0; k_g < ( K + p_KblkV2 - 1 ) / p_KblkV2; ++k_g; @outer( 0 ) ){
 		// setting up the shared memories for fast read and write
 		// s_Q: store Q values
-		@shared dfloat s_Q[ p_KblkV ][ p_Nfields ][ p_NqT ];
+		@shared dfloat s_Q[ p_KblkV2 ][ p_Nfields ][ p_NqT ];
 		// store geometric terms  
-		@shared dfloat s_rxJJ[ p_KblkV ][ p_NqT ]; 
-		@shared dfloat s_ryJJ[ p_KblkV ][ p_NqT ];  
-		@shared dfloat s_sxJJ[ p_KblkV ][ p_NqT ];  
-		@shared dfloat s_syJJ[ p_KblkV ][ p_NqT ];  
+		@shared dfloat s_rxJJ[ p_KblkV2 ][ p_NqT ]; 
+		@shared dfloat s_ryJJ[ p_KblkV2 ][ p_NqT ];  
+		@shared dfloat s_sxJJ[ p_KblkV2 ][ p_NqT ];  
+		@shared dfloat s_syJJ[ p_KblkV2 ][ p_NqT ];  
 		// loop over all the elements in the group
-		const int k_g_e_start = k_g * p_KblkV;
-		for( int k_e = 0; k_e < p_KblkV; ++k_e; @inner( 1 ) ){
+		const int k_g_e_start = k_g * p_KblkV2;
+		for( int k_e = 0; k_e < p_KblkV2; ++k_e; @inner( 1 ) ){
 			const int e = k_g_e_start + k_e;
 			if( e < K ){   
 				// assume these are conservative variables
@@ -573,7 +573,7 @@ void SWE2d_Vflux( const dfloat hL, const dfloat hR, const dfloat uL,
 
 		@barrier( "localMemFence" );  
 
-		for( int k_e = 0; k_e < p_KblkV; ++k_e; @inner( 1 ) ){
+		for( int k_e = 0; k_e < p_KblkV2; ++k_e; @inner( 1 ) ){
 			const int e = k_g_e_start + k_e;
 			if( e < K ){          
 				// apply flux differencing: sum(Q.*F,2) -> s_rhsv (shared memory)
@@ -648,9 +648,9 @@ void SWE2d_Vflux( const dfloat hL, const dfloat hR, const dfloat uL,
 	// k_g denoted index of the group
 	// k_e denoted index of element inside a group
     // looping over all the group
-	for( int k_g = 0; k_g < ( K + p_KblkV - 1 ) / p_KblkV; ++k_g; @outer( 0 ) ){
-		const int k_g_e_start = k_g * p_KblkV;
-		for( int k_e = 0; k_e < p_KblkV; ++k_e; @inner( 1 ) ){
+	for( int k_g = 0; k_g < ( K + p_KblkV3 - 1 ) / p_KblkV3; ++k_g; @outer( 0 ) ){
+		const int k_g_e_start = k_g * p_KblkV3;
+		for( int k_e = 0; k_e < p_KblkV3; ++k_e; @inner( 1 ) ){
 			const int e = k_g_e_start + k_e;
 			if( e < K ){
 				// project s_rhsv using VN = Np x (Nq + Nfq*Nfaces)

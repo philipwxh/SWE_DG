@@ -13,7 +13,7 @@
 #define DEBUG 0
 #define TOL_ZERO 1.e-14
 #define PRINT_ERR 0
-#define CAL_RES 0
+#define CAL_RES 1
 
 int main( int argc, char **argv ){
   clock_t time_setup = clock();
@@ -310,11 +310,11 @@ int main( int argc, char **argv ){
   MatrixXi E_sbpi = MatrixXi::Zero( mesh->rf.size(), mesh->rf.size() );
 
   MatrixXi E_sbp_idx( mesh->rf.size(), 1 );
-  // cout << "mesh->rq block: row: " << mesh->rq.rows() << " . col: "<< mesh->rq.cols() << ". " << endl << mesh->rq << endl << endl;
-  //   cout << "mesh->rf block: row: " << mesh->rf.rows() << " . col: "<< mesh->rf.cols() << ". " << endl << mesh->rf << endl << endl;
+  cout << "mesh->rq block: row: " << mesh->rq.rows() << " . col: "<< mesh->rq.cols() << ". " << endl << mesh->rq << endl << endl;
+    cout << "mesh->rf block: row: " << mesh->rf.rows() << " . col: "<< mesh->rf.cols() << ". " << endl << mesh->rf << endl << endl;
 
-  // cout << "mesh->sq block: row: " << mesh->sq.rows() << " . col: "<< mesh->sq.cols() << ". " << endl << mesh->sq << endl << endl;
-  //   cout << "mesh->sf block: row: " << mesh->sf.rows() << " . col: "<< mesh->sf.cols() << ". " << endl << mesh->sf << endl << endl;
+  cout << "mesh->sq block: row: " << mesh->sq.rows() << " . col: "<< mesh->sq.cols() << ". " << endl << mesh->sq << endl << endl;
+    cout << "mesh->sf block: row: " << mesh->sf.rows() << " . col: "<< mesh->sf.cols() << ". " << endl << mesh->sf << endl << endl;
 
 
   for( int i = 0; i < mesh->rf.size(); ++i ){

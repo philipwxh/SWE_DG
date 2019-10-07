@@ -9,8 +9,8 @@
 #include "SWE_fileio.hpp"
 // SWESOLUTION: name of the initial condition to be tested on
 #define SWESOLUTION VortexSWESolution2d
-#define tau 0.0
-#define DEBUG 1
+#define tau 1.0
+#define DEBUG 0
 #define TOL_ZERO 1.e-14
 #define PRINT_ERR 0
 #define CAL_RES 0
@@ -209,11 +209,16 @@ int main( int argc, char **argv ){
   app->props[ "defines/p_Nvgeo" ] = Nvgeo;
   app->props[ "defines/p_Nfgeo" ] = Nfgeo;
 
-  int KblkP = 4; int KblkV = 4; int KblkS = 4; int KblkU = 4;
+  int KblkV1 = 4; int KblkV2 = 12; int KblkV3 = 4;
+  int KblkP = 4; int KblkS = 4; int KblkU = 4;
   // number of elements in one group for project kernel
   app->props[ "defines/p_KblkP" ] = KblkP;
   // number of elements in one group for volume kernel
-  app->props[ "defines/p_KblkV" ] = KblkV;
+  app->props[ "defines/p_KblkV1" ] = KblkV1;
+  // number of elements in one group for volume kernel
+  app->props[ "defines/p_KblkV2" ] = KblkV2;
+  // number of elements in one group for volume kernel
+  app->props[ "defines/p_KblkV3" ] = KblkV3;
   // number of elements in one group for surface kernel
   app->props[ "defines/p_KblkS" ] = KblkS;
   // number of elements in one group for update kernel
@@ -514,15 +519,16 @@ occa::memory o_rhsv_DEBUG, o_rt;
       // compute the volume term with computing device
       volume1( K, o_rxJJ, o_ryJJ, o_sxJJ, o_syJJ, o_gBTx, o_gBTy,
                   o_QNr, o_QNs, o_Qv, o_Qf, o_rhsv );
+
       // MatrixXd rhsv( NqT * Nfields, K );
       // getOccaArray( app, o_rhsv, rhsv );
       // cout << "rhsv block: row: " << rhsv.rows() << " . col: "<< rhsv.cols() << ". " << endl << rhsv << endl << endl;
-
       volume2( K, o_rxJJ, o_ryJJ, o_sxJJ, o_syJJ,
                   o_QNr, o_QNs, o_Qv, o_Qf, o_rhsv );
+
+
       // getOccaArray( app, o_rhsv, rhsv );
       // cout << "rhsv block: row: " << rhsv.rows() << " . col: "<< rhsv.cols() << ". " << endl << rhsv << endl << endl;
-
       volume3( K, o_VN, o_rhsv, o_rhs );
 
       // MatrixXd rhs( Np * Nfields, K );
@@ -538,7 +544,6 @@ occa::memory o_rhsv_DEBUG, o_rt;
       // getOccaArray( app, o_rhs, rhs );
       // cout << "rhs block: row: " << rhs.rows() << " . col: "<< rhs.cols() << ". " << endl << rhs << endl << endl;
       // return 0;
-
       // combine the surface and volume to update the right hand side of the equation
       update( K, fa, fb, fdt, o_M_inv, o_VN, o_Q, o_Qv, o_rhs, o_res );
       // MatrixXd rhs( Np * Nfields, K );
