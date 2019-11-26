@@ -60,8 +60,8 @@ int main( int argc, char **argv ){
   double Ly = 5;
   // VX: x coordination of elements vertices
   // VY: y coordination of elements vertices
-  mesh->VX = ( mesh->VX ) * Lx;
-  mesh->VY = ( mesh->VY ) * Ly;
+  mesh->VX = ( mesh->VX ) * Lx; Lx *= 2;
+  mesh->VY = ( mesh->VY ) * Ly; Ly *= 2;
 
   // ============ physics independent stuff ===========
 

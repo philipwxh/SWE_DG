@@ -1,0 +1,286 @@
+#define USE_DOUBLE 1
+
+#if USE_DOUBLE
+#define dfloat double
+#define dfloat4 double4
+#define LOGDF log
+#define POWDF pow
+#define EXPDF exp
+#define HALF .5
+#define ONE 1.0
+#define TWO 2.0
+#define ZERO 0.0
+#define TOL 1.e-3
+#define C1 .3333333333333
+#define C2 .2
+#define C3 0.142857142857143
+#define C4 .1111111111111111
+#define TOL_ZERO 1.e-14
+
+#else
+#define dfloat float
+#define dfloat4 float4
+#define LOGDF logf
+#define POWDF powf
+#define EXPDF expf
+#define HALF .5f
+#define ONE 1.f
+#define TWO 2.f
+#define ZERO 0.f;
+#define TOL 1.fe-3
+#define C1 .333333333f
+#define C2 .2f
+#define C3 0.142857142857143f
+#define C4 .1111111111111111f
+#define TOL_ZERO 1.fe-14
+#endif
+
+// helpful functions
+// take the average of two numbers
+#define avg( a, b ) HALF * ( a + b )
+
+void SWE2d_Vflux( const dfloat hL, const dfloat hR, const dfloat uL, 
+				  const dfloat uR, const dfloat vL, const dfloat vR,
+                        dfloat &FxV1, 	 dfloat &FyV1,    dfloat &FxV2,
+                        dfloat &FyV2, 	 dfloat &FxV3,    dfloat &FyV3 ){
+	/* inputs:
+	hL: 	SWE water height on the left
+	hR: 	SWE water height on the right
+	uL: 	SWE water velocity in x direction on the left
+	uR:  	SWE water velocity in x direction on the right
+	vL:  	SWE water velocity in y direction on the left
+	vR:  	SWE water velocity in y direction on the right
+	FxV123: volume flux for x direction for component 1, 2 and 3
+	FyV123: volume flux for y direction for component 1, 2 and 3
+	other:
+	g:  SWE gravitational constant
+	*/
+	//     h_avg:     {{h}}
+	const dfloat h_avg = avg( hL, hR );
+	//     u_avg:     {{u}}
+	const dfloat u_avg = avg( uL, uR );
+	//     v_avg:     {{v}}
+	const dfloat v_avg = avg( vL, vR );
+	//     half_g_h_sq_avg:  .5 *  g  *    {{h^2}}
+	const dfloat half_g_h_sq_avg = p_g_half * avg( hL * hL, hR * hR );
+
+	const dfloat g_h_avg_sq = p_g * h_avg * h_avg;
+ // FxV1: {{hu}}
+	FxV1 = avg( hL * uL, hR * uR );
+ // FyV1: {{hv}}
+	FyV1 = avg( hL * vL, hR * vR );
+ // FxV2: {{hu}}*{{u}}  + g *{{h}}*{{h}} - .5g{{h^2}}
+	FxV2 = FxV1 * u_avg + g_h_avg_sq - half_g_h_sq_avg;
+ // FyV2: {{hv}}* {{u}}
+	FyV2 = FyV1 * u_avg;
+ // FyV2: {{hu}}* {{v}}
+	FxV3 = FxV1 * v_avg;
+ // FyV3: {{hv}}*{{v}}  + g*{{h}}*{{h}} - .5g{{h^2}}
+	FyV3 = FyV1 * v_avg + g_h_avg_sq - half_g_h_sq_avg;
+}
+
+
+void SWE2d_Vf( const dfloat h, const dfloat u, const dfloat v, 
+                     dfloat &fx1, 	 dfloat &fx2,    dfloat &fx3,
+                     dfloat &fy1, 	 dfloat &fy2,    dfloat &fy3){
+	/* inputs:
+	hL: 	SWE water height on the left
+	hR: 	SWE water height on the right
+	uL: 	SWE water velocity in x direction on the left
+	uR:  	SWE water velocity in x direction on the right
+	vL:  	SWE water velocity in y direction on the left
+	vR:  	SWE water velocity in y direction on the right
+	FxV123: volume flux for x direction for component 1, 2 and 3
+	FyV123: volume flux for y direction for component 1, 2 and 3
+	other:
+	g:  SWE gravitational constant
+	*/
+	const dfloat hu = h * u;
+	const dfloat hv = h * v;
+	const dfloat huv = hu * v;
+	const dfloat half_g_h_sq = p_g_half * h * h;
+	fx1 = hu;
+	fx2 = hu * u + half_g_h_sq;
+	fx3 = huv;
+	fy1 = hv;
+	fy2 = huv;
+	fy3 = hv * v + half_g_h_sq;
+
+}
+
+@kernel void flux_test1( const int K,
+		    		 	 const dfloat *   Q @restrict, 
+		    		 	 const dfloat *   U @restrict,
+		    		 	 	   dfloat * rhs @restrict ){
+
+	// k_g denoted index of the group
+	// k_e denoted index of element inside a group
+    // looping over all the group
+	for( int k_g = 0; k_g < ( K + p_KblkV1 - 1 ) / p_KblkV1; ++k_g; @outer( 0 ) ){
+		// setting up the shared memories for fast read and write
+		// s_Q: store Q values
+		@shared dfloat s_Q[ p_KblkV1 ][ p_Nfields ][ p_Nq ];
+		// loop over all the elements in the group
+		const int k_g_e_start = k_g * p_KblkV1;
+		for( int k_e = 0; k_e < p_KblkV1; ++k_e; @inner( 1 ) ){
+			const int e = k_g_e_start + k_e;
+			if( e < K ){   
+				// assume these are conservative variables
+				// looping over all the quadrature pts
+				for( int i = 0; i < p_Nq; ++i; @inner( 0 ) ){
+		          
+					int id = i + p_Nq * p_Nfields * e;
+					for( int fld = 0; fld < p_Nfields; ++fld ){
+						s_Q[ k_e ][ fld ][ i ] = U[ id ]; id += p_Nq;
+					}
+				}//inner( 0 )
+			}// e< K
+		}// k_e
+
+		@barrier( "localMemFence" );  
+
+		for( int k_e = 0; k_e < p_KblkV1; ++k_e; @inner( 1 ) ){
+			const int e = k_g_e_start + k_e;
+			if( e < K ){          
+				// apply flux differencing: sum(Q.*F,2) -> s_rhsv (shared memory)
+				for( int i = 0; i < p_Nq; ++i; @inner( 0 ) ){
+				    // val: store the volume flux 
+					dfloat val[ p_Nfields ];
+					for( int fld = 0; fld < p_Nfields; ++fld ){
+						val[ fld ] = ZERO; 
+					}
+					// extract the info from the ith node
+					const dfloat h_i     = s_Q[ k_e ][ 0 ][ i ];
+					const dfloat inv_h_i = ONE / h_i;
+					const dfloat u_i     = s_Q[ k_e ][ 1 ][ i ] * inv_h_i;
+					const dfloat v_i     = s_Q[ k_e ][ 2 ][ i ] * inv_h_i;
+		            
+					// apply Qr, Qs
+					// in thus loop, we sum the Qxij * FxVij + Qyij * FyVij over j
+					for( int j = 0; j < p_Nq; ++j ){
+						// extract the info from the jth node
+						const dfloat h_j     = s_Q[ k_e ][ 0 ][ j ];
+						const dfloat inv_h_j = ONE / h_j;
+						const dfloat u_j     = s_Q[ k_e ][ 1 ][ j ] * inv_h_j;
+						const dfloat v_j     = s_Q[ k_e ][ 2 ][ j ] * inv_h_j;
+					
+						// compute the volume flux
+						dfloat FxV1, FyV1, FxV2, FyV2, FxV3, FyV3;
+						SWE2d_Vflux( h_i, h_j, u_i, u_j, v_i, v_j,
+						     		 FxV1, FyV1, FxV2, FyV2, FxV3, FyV3 );
+						
+						const dfloat Qrij = Q[ i + j * p_Nq ];
+						const dfloat Qsij = Q[ i + j * p_Nq ];
+						
+						val[ 0 ] += Qrij * FxV1 + Qsij * FyV1;
+						val[ 1 ] += Qrij * FxV2 + Qsij * FyV2;
+						val[ 2 ] += Qrij * FxV3 + Qsij * FyV3;
+					}
+					
+					// write out to the shared memory
+					int id = i + e * p_Nfields * p_Nq;
+					for( int fld = 0; fld < p_Nfields; ++fld ){
+						rhs[ id ] = val[ fld ]; id += p_Nq;
+					}
+				}// inner0
+			}// e < K
+		}// k_e
+	}// k_g
+}
+
+
+
+@kernel void flux_test2( const int K,
+		    		 	 const dfloat *   Q @restrict, 
+		    		 	 const dfloat *   U @restrict,
+		    		 	 	   dfloat * rhs @restrict ){
+	for( int k_g = 0; k_g < ( K + p_KblkV2 - 1 ) / p_KblkV2; ++k_g; @outer( 0 ) ){
+		// setting up the shared memories for fast read and write
+		// s_Q: store Q values
+		// @shared dfloat s_Q[ p_KblkV2 ][ p_Nfields ][ p_Nq ];
+		@shared dfloat s_f[ p_KblkV2 ][ p_Nfields * 2 ][ p_Nq ];
+		// loop over all the elements in the group
+		const int k_g_e_start = k_g * p_KblkV2;
+		for( int k_e = 0; k_e < p_KblkV2; ++k_e; @inner( 1 ) ){
+			const int e = k_g_e_start + k_e;
+			if( e < K ){   
+				// assume these are conservative variables
+				// looping over all the quadrature pts
+				for( int i = 0; i < p_Nq; ++i; @inner( 0 ) ){
+					int id = i + p_Nq * p_Nfields * e;
+					const dfloat h_i     = U[ id ]; 
+					id += p_Nq;
+					const dfloat inv_h_i = ONE / h_i;
+					const dfloat u_i     = U[ id ] * inv_h_i; 
+					id += p_Nq;
+					const dfloat v_i     = U[ id ] * inv_h_i;
+					dfloat fx1, fx2, fx3, fy1, fy2, fy3;
+					SWE2d_Vf( h_i, u_i, v_i, fx1, fx2, fx3, fy1, fy2, fy3 );
+					s_f[ k_e ][ 0 ][ i ] = fx1;
+					s_f[ k_e ][ 1 ][ i ] = fx2;
+					s_f[ k_e ][ 2 ][ i ] = fx3;	
+					s_f[ k_e ][ 3 ][ i ] = fy1;
+					s_f[ k_e ][ 4 ][ i ] = fy2;
+					s_f[ k_e ][ 5 ][ i ] = fy3;			
+				}//inner( 0 )
+			}// e< K
+		}// k_e
+
+		// @barrier( "localMemFence" );  
+
+		// for( int k_e = 0; k_e < p_KblkV2; ++k_e; @inner( 1 ) ){
+		// 	const int e = k_g_e_start + k_e;
+		// 	if( e < K ){   
+		// 		// assume these are conservative variables
+		// 		// looping over all the quadrature pts
+		// 		for( int i = 0; i < p_Nq; ++i; @inner( 0 ) ){
+		// 			const dfloat h_i     = s_Q[ k_e ][ 0 ][ i ];
+		// 			const dfloat inv_h_i = ONE / h_i;
+		// 			const dfloat u_i     = s_Q[ k_e ][ 1 ][ i ] * inv_h_i;
+		// 			const dfloat v_i     = s_Q[ k_e ][ 2 ][ i ] * inv_h_i;
+		// 			dfloat fx1, fx2, fx3, fy1, fy2, fy3;
+		// 			SWE2d_Vf( h_i, u_i, v_i, fx1, fx2, fx3, fy1, fy2, fy3 );
+		// 			s_f[ k_e ][ 0 ][ i ] = fx1;
+		// 			s_f[ k_e ][ 1 ][ i ] = fx2;
+		// 			s_f[ k_e ][ 2 ][ i ] = fx3;
+		// 		}//inner( 0 )
+		// 	}// e< K
+		// }// k_e
+
+		@barrier( "localMemFence" );
+
+		for( int k_e = 0; k_e < p_KblkV2; ++k_e; @inner( 1 ) ){
+			const int e = k_g_e_start + k_e;
+			if( e < K ){          
+				// apply flux differencing: sum(Q.*F,2) -> s_rhsv (shared memory)
+				for( int i = 0; i < p_Nq; ++i; @inner( 0 ) ){
+				    // val: store the volume flux 
+					dfloat val[ p_Nfields ];
+					for( int fld = 0; fld < p_Nfields; ++fld ){
+						val[ fld ] = ZERO; 
+					}
+					// apply Qr, Qs
+					// in thus loop, we sum the Qxij * FxVij + Qyij * FyVij over j
+					for( int j = 0; j < p_Nq; ++j ){			
+						const dfloat Qij = Q[ i + j * p_Nq ];
+						const dfloat fx1 = s_f[ k_e ][ 0 ][ j ];
+						const dfloat fx2 = s_f[ k_e ][ 1 ][ j ];
+						const dfloat fx3 = s_f[ k_e ][ 2 ][ j ];
+						const dfloat fy1 = s_f[ k_e ][ 3 ][ j ];
+						const dfloat fy2 = s_f[ k_e ][ 4 ][ j ];
+						const dfloat fy3 = s_f[ k_e ][ 5 ][ j ];
+						val[ 0 ] += Qij * fx1 + Qij * fy1;
+						val[ 1 ] += Qij * fx2 + Qij * fy2;
+						val[ 2 ] += Qij * fx3 + Qij * fy3;
+					}
+					
+					// write out to the shared memory
+					int id = i + e * p_Nfields * p_Nq;
+					for( int fld = 0; fld < p_Nfields; ++fld ){
+						rhs[ id ] = val[ fld ]; id += p_Nq;
+					}
+				}// inner0
+			}// e < K
+		}// k_e
+	}// k_g
+}

@@ -47,6 +47,38 @@ void SWE_fileio( double Lx, double Ly, int N, int K1D, int K, int Nsteps,
   outfile.close();
 }
 
+void flux_test_fileio( int N, int K, clock_t flux_time_t1, clock_t flux_time_t2 ){  
+ // write results to .csv file
+
+  string filename = "flux_test_serial.csv";
+  ifstream file_test( filename.c_str() );
+  ofstream outfile;
+  // check if the file already exist
+  bool file_exist = file_test.good();
+  file_test.close();
+  // if the file already exist, open to append
+  if( file_exist ){
+    outfile.open( filename.c_str(), ios_base::app );
+  }else{
+    // if the file does not exist, create and open to write
+    outfile.open( filename.c_str() );
+  }
+  // check if the file opened correctly
+  if( outfile ){
+    // if the file does not exist, add a row of column description
+    if( !file_exist ){
+      outfile << "N, K, flux_time_t1, flux_time_t2\n";
+    }
+    // write out all the result and parameter
+    outfile << N << "," << K << ",";
+    outfile << (float) flux_time_t1 / CLOCKS_PER_SEC << ",";
+    outfile << (float) flux_time_t2 / CLOCKS_PER_SEC << endl;
+  }else{
+    cerr << "Cannot open file results.csv to write" << endl;
+  }
+  outfile.close();
+}
+
 void SWE_error_output( Mesh *mesh, MatrixXd &Q, MatrixXd &Vq, MatrixXd &btm,
                        double g, double FinalTime, double CFL, int N, int K1D,
      void ( *SWE_solution )( MatrixXd, MatrixXd, double, double &, MatrixXd &, MatrixXd &, MatrixXd &, MatrixXd &)){  

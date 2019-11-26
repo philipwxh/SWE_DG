@@ -60,8 +60,8 @@ int main( int argc, char **argv ){
   double Ly = 5;
   // VX: x coordination of elements vertices
   // VY: y coordination of elements vertices
-  mesh->VX = ( mesh->VX ) * Lx;
-  mesh->VY = ( mesh->VY ) * Ly;
+  mesh->VX = ( mesh->VX ) * Lx; Lx *= 2;
+  mesh->VY = ( mesh->VY ) * Ly; Ly *= 2;
 
   // ============ physics independent stuff ===========
 
@@ -85,7 +85,10 @@ int main( int argc, char **argv ){
   MatrixXd dy = ( 2 * PI / Lx * mesh->x.array() ).sin() * 
                 ( PI / Ly * mesh->y.array() ).cos();
   mesh->y = mesh->y + Ly * curve * dy;
- 
+ // cout << "mesh->x block: row: " << mesh->x.rows() << " . col: "<< mesh->x.cols() << ". " << endl << mesh->x << endl << endl;
+ //  cout << "mesh->y block: row: " << mesh->y.rows() << " . col: "<< mesh->y.cols() << ". " << endl << mesh->y << endl << endl;
+ //  cout << "mesh->Dr block: row: " << mesh->Dr.rows() << " . col: "<< mesh->Dr.cols() << ". " << endl << mesh->Dr << endl << endl;
+ //  cout << "mesh->Ds block: row: " << mesh->Ds.rows() << " . col: "<< mesh->Ds.cols() << ". " << endl << mesh->Ds << endl << endl;
   // initialize geometric factors
   GeometricFactors2d( mesh );
 
@@ -209,7 +212,7 @@ int main( int argc, char **argv ){
   app->props[ "defines/p_Nvgeo" ] = Nvgeo;
   app->props[ "defines/p_Nfgeo" ] = Nfgeo;
 
-  int KblkV1 = 4; int KblkV2 = 12; int KblkV3 = 4;
+  int KblkV1 = 4; int KblkV2 = 4; int KblkV3 = 8;
   int KblkP = 4; int KblkS = 4; int KblkU = 4;
   // number of elements in one group for project kernel
   app->props[ "defines/p_KblkP" ] = KblkP;
@@ -339,6 +342,7 @@ occa::memory o_rhsv_DEBUG, o_rt;
   // print statement left here for furture debugging purpose
   // can be used to print the above matrices for correctness checking
   // cout << "VN block: row: " << VN.rows() << " . col: "<< VN.cols() << ". " << endl << VN << endl << endl;
+  // cout << "Vq block: row: " << Vq.rows() << " . col: "<< Vq.cols() << ". " << endl << Vq << endl << endl;
 
   // calculate interpolated geometric cofficients
   MatrixXd JJ   = Vq * mesh->J;
@@ -352,6 +356,8 @@ occa::memory o_rhsv_DEBUG, o_rt;
   //        To get the mass matrix for the e th element:
   //        M_inv.middleRows( e * Np, Np )
   MatrixXd M_inv( K * Np, Np );
+
+  MatrixXd VN_M_inv_Vq( K * NqT, Nq );
   // QNx:   stores the QNx for all elements
   //        To get the QNx for the e th element:
   //        QNx.middleRows( e * NqT, NqT )
@@ -383,12 +389,13 @@ occa::memory o_rhsv_DEBUG, o_rt;
       MatrixXd syJJi = syJJ.col( e ).asDiagonal();
 
       // build mass matrix, QNx and QNy for element e
-      MatrixXd M_e = Vq.transpose() * WqJJi * Vq;
+      MatrixXd M_e_inv = ( Vq.transpose() * WqJJi * Vq ).inverse();
       MatrixXd QNx_e = 0.5 * ( rxJJi * QNr + QNr * rxJJi + sxJJi * QNs + QNs * sxJJi );
       MatrixXd QNy_e = 0.5 * ( ryJJi * QNr + QNr * ryJJi + syJJi * QNs + QNs * syJJi );
       
       // stack information to larger matrices
-      M_inv.middleRows( e * Np, Np ) = M_e.inverse();
+      M_inv.middleRows( e * Np, Np ) = M_e_inv;
+      VN_M_inv_Vq.middleRows( e * NqT, NqT ) = VN * M_e_inv * Vq.transpose();
       gBTMx.middleCols( e, 1 )  = g * QNx_e * BTMq.col( e );
       gBTMy.middleCols( e, 1 )  = g * QNy_e * BTMq.col( e );
       // QNx.middleRows( e * NqT, NqT  ) = QNx_e;
@@ -437,7 +444,7 @@ occa::memory o_rhsv_DEBUG, o_rt;
   setOccaArray( app, MatrixXd::Zero( NqT * Nfields, K ), o_rhsv ); 
 
   // occa operators
-  occa::memory o_M_inv, o_wq, o_QNr, o_QNs, o_VfTWf, o_Vq, o_VN; 
+  occa::memory o_M_inv, o_VN_M_inv_Vq, o_wq, o_QNr, o_QNs, o_VfTWf, o_Vq, o_VN; 
   // operators not used to curved mesh:
   // occa::memory o_Lf, o_PN, o_VNP
   occa::memory o_gBTx, o_gBTy; // precomputed data
@@ -455,6 +462,7 @@ occa::memory o_rhsv_DEBUG, o_rt;
 
   // set operators
   setOccaArray( app, M_inv, o_M_inv );
+  setOccaArray( app, VN_M_inv_Vq, o_VN_M_inv_Vq );
   setOccaArray( app, mesh->wq, o_wq );
   // setOccaArray( app, Vq, o_Vq );
   setOccaArray( app, QNr, o_QNr );
@@ -505,7 +513,7 @@ occa::memory o_rhsv_DEBUG, o_rt;
       const dfloat fb  = ( dfloat ) mesh->rk4b[ INTRK ];
       // cout << "Qv block: row: " << Qv.rows() << " . col: "<< Qv.cols() << ". " << endl << Qv << endl << endl;
       // entropy projection
-      project( K, o_M_inv, o_VN, o_WqJJ, o_Qv, o_Qf, o_rhsv_DEBUG );
+      project( K, o_VN_M_inv_Vq, o_WqJJ, o_Qv, o_Qf, o_rhsv_DEBUG );
 
       // getOccaArray( app, o_rhsv_DEBUG, rhsv_DEBUG );
       // cout << "rhsv_DEBUG block: row: " << rhsv_DEBUG.rows() << " . col: "<< rhsv_DEBUG.cols() << ". " << endl << rhsv_DEBUG << endl << endl;

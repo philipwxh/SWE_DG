@@ -32,7 +32,7 @@ objects  = $(subst $(srcPath)/,$(objPath)/,$(sources:.cpp=.o))
 
 .PHONY: clean
 
-all: main2d main2d_sbp main2d_baseline runner2d vol_test
+all: main2d main2d_sbp main2d_baseline runner2d flux_test flux_test_runner
 
 main2d: $(objects) $(headers) main2d.cpp
 	$(compiler) $(compilerFlags) -o main2d $(flags) $(objects) main2d.cpp -L${OCCA_DIR}/lib $(paths) $(linkerFlags)
@@ -49,8 +49,11 @@ main2d_sbp: $(objects) $(headers) main2d_sbp.cpp
 main2d_baseline: $(objects) $(headers) main2d_baseline.cpp
 	$(compiler) $(compilerFlags) -o main2d_baseline $(flags) $(objects) main2d_baseline.cpp -L${OCCA_DIR}/lib $(paths) $(linkerFlags)
 
-vol_test: $(objects) $(headers) vol_test.cpp
-	$(compiler) $(compilerFlags) -o vol_test $(flags) $(objects) vol_test.cpp -L${OCCA_DIR}/lib $(paths) $(linkerFlags)
+flux_test: $(objects) $(headers) flux_test.cpp
+	$(compiler) $(compilerFlags) -o flux_test $(flags) $(objects) flux_test.cpp -L${OCCA_DIR}/lib $(paths) $(linkerFlags)
+
+flux_test_runner: flux_test_runner.cpp
+	g++ $(compilerFlags) flux_test_runner.cpp -o flux_test_runner;
 
 runner2d: runner2d.cpp
 	g++ $(compilerFlags) runner2d.cpp -o runner2d;
@@ -66,12 +69,14 @@ clean:
 	rm -f main2d_sbp;
 # 	rm -f main2d_group;
 	rm -f main2d_baseline;
-	rm -f vol_test;
+	rm -f flux_test;
+	rm -f flux_test_runner;
 	rm -rf main2d.dSYM;
 	rm -rf main2d_sbp.dSYM;
 # 	rm -rf main2d_group.dSYM;
 	rm -rf main2d_baseline.dSYM;
-	rm -f vol_test.dSYM;
+	rm -rf flux_test.dSYM;
+	rm -rf flux_test_runner.dSYM;
 
 
 

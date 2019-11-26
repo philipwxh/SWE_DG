@@ -17,4 +17,6 @@ void SWE_error_output( Mesh *mesh, MatrixXd &Q, MatrixXd &Vq, MatrixXd &btm,
 					   double g, double FinalTime, double CFL, int N, int K1D,
      void ( *SWE_solution )( MatrixXd, MatrixXd, double, double &, MatrixXd &, MatrixXd &, MatrixXd &, MatrixXd &));
 
+void flux_test_fileio( int N, int K, clock_t flux_time_t1, clock_t flux_time_t2 );
+
 #endif

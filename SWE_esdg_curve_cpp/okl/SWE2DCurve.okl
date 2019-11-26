@@ -158,8 +158,7 @@ void SWE2d_Vflux( const dfloat hL, const dfloat hR, const dfloat uL,
 
 // compute L2 projection of entropy variables
 @kernel void project( const int K, 
-	                  const dfloat * M_inv,
-					  const dfloat * VN,
+	                  const dfloat * VN_M_inv_Vq,
 					  const dfloat * WqJJ,
 		     		  dfloat * Qv, 
 		     		  dfloat * Qf,
@@ -183,10 +182,6 @@ void SWE2d_Vflux( const dfloat hL, const dfloat hR, const dfloat uL,
 		@shared dfloat s_Q[ p_KblkP ][ p_Nfields + 1 ][ p_Nq ];
 		// s_WqJJ: stores wq .* (Vq * J ) column e
 		@shared dfloat s_WqJJ[ p_KblkP ][ p_Nq ];
-		// s_VqTwqJJV: store Vq^T * ( wq .* JJ( :, e ) .* V(u)  )
-		@shared dfloat s_VqTwqJJV[ p_KblkP ][ p_Nfields ][ p_Np ];
-		// s_M_inv_eV: M_inverse * VqTwqJJV
-		@shared dfloat s_M_inv_eV[ p_KblkP ][ p_Nfields ][ p_Np ];
 
 		// k_e denoted index of element inside a group
 		const int k_g_e_start = k_g * p_KblkP;
@@ -220,38 +215,6 @@ void SWE2d_Vflux( const dfloat hL, const dfloat hR, const dfloat uL,
 			}// e < K
 		}// k_e
 		@barrier( "localMemFence" );
-		
-		// loop over all the element in the group
-		for( int k_e = 0; k_e < p_KblkP; ++k_e; @inner( 1 ) ){
-			const int e = k_g_e_start + k_e;
-			if( e < K ){	        
-				// calculate VqTwqJJV
-				// loop over all rows of Vq^T
-				for( int i = 0; i < p_NqT; ++i; @inner( 0 ) ){
-					if( i < p_Np ){
-						// loop over all column of Vq^T
-						// val: accumulate matrix vector multiplication result
-						dfloat val[ p_Nfields ];
-						for( int fld = 0; fld < p_Nfields + 1; ++fld ){
-							val[ fld ] = ZERO; 
-						}
-						for( int j = 0; j < p_Nq; ++j ){
-							// WqJJi: wq .* JJi
-							const dfloat WqJJi = s_WqJJ[ k_e ][ j ];
-							// VqTij: Vq^T(i,j) i * p_NqT get to the ith column, j iterate down
-							const dfloat VqTij = VN[ i * p_NqT + j ];
-							for ( int fld = 0; fld < p_Nfields; ++fld ){
-								val[ fld ] += VqTij * WqJJi * s_Q[ k_e ][ fld ][ j ];
-							}
-						}
-						for ( int fld = 0; fld < p_Nfields; ++fld ){
-							s_VqTwqJJV[ k_e ][ fld ][ i ] = val[ fld ];
-						}
-					}
-				}// inner( 0 )
-			}// e < K
-		}// k_e
-		@barrier( "localMemFence" );
 
 		// loop over all the element in the group
 		for( int k_e = 0; k_e < p_KblkP; ++k_e; @inner( 1 ) ){
@@ -259,70 +222,21 @@ void SWE2d_Vflux( const dfloat hL, const dfloat hR, const dfloat uL,
 			if( e < K ){
 				// compute M_inverse * VqTwqJJV
 		        for( int i = 0; i < p_NqT; ++i; @inner( 0 ) ){
-					if( i < p_Np ){
-						// val: accumulate matrix vector multiplication result
-			        	dfloat val[ p_Nfields ];
-						for( int fld = 0; fld < p_Nfields + 1; ++fld ){
-							val[ fld ] = ZERO; 
-						}
-						for( int j = 0; j < p_Np; ++j ){
-					        // Mij: mass matrix inverse( i, j )
-							const dfloat Mij = M_inv[ i + p_Np * e + K * p_Np * j ];
-							for( int fld = 0; fld < p_Nfields; ++fld ){
-								val[ fld ] += Mij * s_VqTwqJJV[ k_e ][ fld ][ j ];
-							}
-						}
-						// update s_M_inv_eV result
-						for( int fld = 0; fld < p_Nfields; ++fld ){
-							s_M_inv_eV[ k_e ][ fld ][ i ] = val[ fld ]; 
-						}
-					}
-				}// inner( 0 )
-			}// e < K
-		}// k_e
-		@barrier( "localMemFence" );
-
-#if DEBUG
-		// loop over all the element in the group
-		for( int k_e = 0; k_e < p_KblkP; ++k_e; @inner( 1 ) ){
-			const int e = k_g_e_start + k_e;
-			if( e < K ){
-			    // rhstest for debugging
-				for( int i = 0; i < p_NqT; ++i; @inner( 0 ) ){
-					if( i < p_Np ){
-						int rhsv_idx = i + p_Np * p_Nfields * e;
-						for( int fld = 0; fld < p_Nfields; ++fld ){
-							rhsv[ rhsv_idx ] = s_M_inv_eV[ k_e ][ fld ][ i ];
-							rhsv_idx += p_Np;
-						}
-					}
-				}// inner( 0 )
-			}// e < K
-		}// k_e		
-		@barrier( "localMemFence" );
-#endif
-
-		// loop over all the element in the group
-		for( int k_e = 0; k_e < p_KblkP; ++k_e; @inner( 1 ) ){
-			const int e = k_g_e_start + k_e;
-			if( e < K ){
-				// compute projection of entropy variables
-				for( int i = 0; i < p_NqT; ++i; @inner( 0 ) ){
 					// val: accumulate matrix vector multiplication result
-					dfloat val[ p_Nfields ];
-					for( int fld = 0; fld < p_Nfields; ++fld ){
+		        	dfloat val[ p_Nfields ];
+					for( int fld = 0; fld < p_Nfields + 1; ++fld ){
 						val[ fld ] = ZERO; 
 					}
-
-					// multiply each field of v(u) by (VN * Pq)
-					for( int j = 0; j < p_Np; ++j ){
-						// VNij = VN(i,j) 
-						const dfloat VNij = VN[ i + j * p_NqT ];
-						for ( int fld = 0; fld < p_Nfields; ++fld ){
-							val[ fld ] += VNij * s_M_inv_eV[ k_e ][ fld ][ j ];
+					for( int j = 0; j < p_Nq; ++j ){
+						// WqJJi: wq .* JJi
+						const dfloat WqJJi = s_WqJJ[ k_e ][ j ];
+				        // Mij: mass matrix inverse( i, j )
+						const dfloat VN_M_inv_Vqij = VN_M_inv_Vq[ i + p_NqT * e + K * p_NqT * j ];
+						for( int fld = 0; fld < p_Nfields; ++fld ){
+							val[ fld ] += VN_M_inv_Vqij * WqJJi * s_Q[ k_e ][ fld ][ j ];;
 						}
 					}
-
+					
 					// convert entropy to conservative variables and store
 					const dfloat v1 = val[ 0 ];
 					const dfloat v2 = val[ 1 ];
